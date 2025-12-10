@@ -60,7 +60,6 @@ public class AvaliacaoController {
         }
     }
 
-    // [NOVO] Endpoint para Relatório Geral da Turma
     @GetMapping("/boletim/turma/{turmaId}")
     public ResponseEntity<?> consultarBoletimTurma(
             @PathVariable Long turmaId,
@@ -70,6 +69,56 @@ public class AvaliacaoController {
         } catch (Exception e) {
             log.error("Erro ao gerar boletim da turma: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
+    
+    // [NOVO ENDPOINT] Fechar Avaliação Individual
+    @PostMapping("/fechar")
+    public ResponseEntity<?> fecharAvaliacao(
+            @RequestParam Long alunoId,
+            @RequestParam Long disciplinaId) {
+        try {
+            ResultadoBoletimDTO resultado = avaliacaoServices.finalizarAvaliacao(alunoId, disciplinaId);
+            return ResponseEntity.ok(resultado);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("Erro ao fechar avaliação", e);
+            return ResponseEntity.internalServerError().body("Erro ao fechar avaliação.");
+        }
+    }
+
+    // [NOVO ENDPOINT] Fechar Avaliação da Turma INTEIRA
+    @PostMapping("/fechar/turma/{turmaId}")
+    public ResponseEntity<?> fecharAvaliacaoTurma(
+            @PathVariable Long turmaId,
+            @RequestParam Long disciplinaId) {
+        try {
+            List<ResultadoBoletimDTO> resultados = avaliacaoServices.finalizarAvaliacaoTurma(turmaId, disciplinaId);
+            return ResponseEntity.ok(resultados);
+        } catch (RuntimeException e) {
+            log.error("Erro ao fechar avaliação da turma: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("Erro inesperado ao fechar avaliação da turma", e);
+            return ResponseEntity.internalServerError().body("Erro ao fechar avaliação da turma.");
+        }
+    }
+
+
+    // [NOVO ENDPOINT] Reabrir Avaliação
+    @PostMapping("/reabrir")
+    public ResponseEntity<?> reabrirAvaliacao(
+            @RequestParam Long alunoId,
+            @RequestParam Long disciplinaId) {
+        try {
+            avaliacaoServices.reabrirAvaliacao(alunoId, disciplinaId);
+            return ResponseEntity.ok("Avaliação reaberta com sucesso.");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("Erro ao reabrir avaliação", e);
+            return ResponseEntity.internalServerError().body("Erro ao reabrir avaliação.");
         }
     }
 }

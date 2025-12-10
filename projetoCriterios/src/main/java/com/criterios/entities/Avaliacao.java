@@ -1,15 +1,14 @@
 package com.criterios.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "tb_avaliacao", uniqueConstraints = {
     @UniqueConstraint(columnNames = {"aluno_id", "criterio_id"})
@@ -30,10 +29,16 @@ public class Avaliacao {
 
     private LocalDateTime dataAvaliacao;
 
+    // [NOVO] Campo para status de fechamento (usaremos no service)
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private Boolean finalizada = false; 
+    
+    // [NOVO] Nível calculado na hora do fechamento
+    private Integer nivelFinal; 
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "aluno_id", nullable = false)
     @OnDelete(action = OnDeleteAction.CASCADE)
-    // [CORREÇÃO] Adicionado @JsonIgnore para quebrar o loop
     @JsonIgnore 
     private Aluno aluno;
 

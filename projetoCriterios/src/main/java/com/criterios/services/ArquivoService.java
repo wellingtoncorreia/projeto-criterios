@@ -1,5 +1,8 @@
 package com.criterios.services;
 
+import com.criterios.dto.CritItemDTO;
+import com.criterios.dto.EstruturaImportacaoDTO;
+import com.criterios.dto.CapItemDTO;
 import com.criterios.entities.*;
 import com.criterios.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -168,6 +173,7 @@ public class ArquivoService {
                     }
                 }
 
+                // O método salvarCriterioSeNaoExistir aqui ainda é necessário
                 if (salvarCriterioSeNaoExistir(descricao, tipo, capacidade)) {
                     count++;
                 }
@@ -176,103 +182,121 @@ public class ArquivoService {
         }
     }
 
- // --- 4. IMPORTAÇÃO DE ESTRUTURA COMPLETA (CSV: Capacidade, Critério) ---
-    @Transactional
-    public String importarEstruturaCompleta(MultipartFile file, Long disciplinaId) throws IOException {
+    // --- 4. PRÉ-PROCESSAMENTO DE ESTRUTURA COMPLETA (CSV/XLSX) ---
+    public EstruturaImportacaoDTO preProcessarEstrutura(MultipartFile file, Long disciplinaId) throws IOException {
         Disciplina disciplina = disciplinaRepository.findById(disciplinaId)
                 .orElseThrow(() -> new RuntimeException("Disciplina não encontrada"));
 
+        List<CapItemDTO> capacidades = new ArrayList<>();
+        
+        if (file.getOriginalFilename() != null && 
+            (file.getOriginalFilename().toLowerCase().endsWith(".xlsx") || file.getOriginalFilename().toLowerCase().endsWith(".xls"))) {
+            capacidades = parseExcelEstruturaToDTO(file);
+        } else {
+            capacidades = parseCsvEstruturaToDTO(file);
+        }
+        
+        EstruturaImportacaoDTO dto = new EstruturaImportacaoDTO();
+        dto.setDisciplinaId(disciplinaId);
+        dto.setNomeDisciplina(disciplina.getNome());
+        dto.setCapacidades(capacidades);
+        
+        return dto;
+    }
+    
+    // --- MÉTODOS PRIVADOS DE PARSING PARA DTO ---
+
+    private List<CapItemDTO> parseCsvEstruturaToDTO(MultipartFile file) throws IOException {
+        List<CapItemDTO> capacidades = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
             
-            // BUSCA TODAS AS CAPACIDADES EXISTENTES DA DISCIPLINA NO INÍCIO
-            List<Capacidade> capacidadesExistentes = capacidadeRepository.findByDisciplinaId(disciplinaId);
-            java.util.Map<String, Capacidade> capacidadesMap = new java.util.HashMap<>();
-            
-            // Popula o mapa com capacidades já existentes
-            for (Capacidade cap : capacidadesExistentes) {
-                capacidadesMap.put(cap.getDescricao(), cap);
-            }
-            
             String line;
-            int capsCount = 0;
-            int critCount = 0;
-            Capacidade ultimaCapacidade = null;
-
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) continue;
 
+                // Regex para splitar CSV ignorando vírgulas dentro de aspas
+                // O arquivo Pasta4_novo.csv parece usar vírgula como delimitador
                 String[] columns = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
 
                 String colCapacidade = (columns.length > 0) ? columns[0].replace("\"", "").trim() : "";
                 String colCriterio = (columns.length > 1) ? columns[1].replace("\"", "").trim() : "";
 
-                // Caso 1: Ambas colunas preenchidas
-                if (!colCapacidade.isEmpty() && !colCriterio.isEmpty()) {
-                    // Verifica no mapa (não toca no banco durante o loop)
-                    if (!capacidadesMap.containsKey(colCapacidade)) {
-                        // Não existe, cria nova
-                        Capacidade nova = new Capacidade();
-                        nova.setDisciplina(disciplina);
-                        nova.setDescricao(colCapacidade);
-                        
-                        if (colCapacidade.toLowerCase().contains("socio") || 
-                            colCapacidade.toLowerCase().contains("comport") || 
-                            colCapacidade.toLowerCase().contains("atitude")) {
-                            nova.setTipo(TipoCapacidade.SOCIOEMOCIONAL);
-                        } else {
-                            nova.setTipo(TipoCapacidade.TECNICA);
-                        }
-                        
-                        nova.setCriterios(new ArrayList<>());
-                        ultimaCapacidade = capacidadeRepository.save(nova);
-                        capacidadesMap.put(colCapacidade, ultimaCapacidade);
-                        capsCount++;
-                    } else {
-                        // Já existe no mapa, reutiliza
-                        ultimaCapacidade = capacidadesMap.get(colCapacidade);
-                    }
-                    
-                    // Adiciona critério
-                    if (salvarCriterioSeNaoExistir(colCriterio, TipoCriterio.CRITICO, ultimaCapacidade)) {
-                        critCount++;
-                    }
-                }
-                // Caso 2: Apenas primeira coluna preenchida
-                else if (!colCapacidade.isEmpty() && colCriterio.isEmpty()) {
-                    if (!capacidadesMap.containsKey(colCapacidade)) {
-                        Capacidade nova = new Capacidade();
-                        nova.setDisciplina(disciplina);
-                        nova.setDescricao(colCapacidade);
-                        
-                        if (colCapacidade.toLowerCase().contains("socio") || 
-                            colCapacidade.toLowerCase().contains("comport") || 
-                            colCapacidade.toLowerCase().contains("atitude")) {
-                            nova.setTipo(TipoCapacidade.SOCIOEMOCIONAL);
-                        } else {
-                            nova.setTipo(TipoCapacidade.TECNICA);
-                        }
-                        
-                        nova.setCriterios(new ArrayList<>());
-                        ultimaCapacidade = capacidadeRepository.save(nova);
-                        capacidadesMap.put(colCapacidade, ultimaCapacidade);
-                        capsCount++;
-                    } else {
-                        ultimaCapacidade = capacidadesMap.get(colCapacidade);
-                    }
-                }
-                // Caso 3: Apenas segunda coluna preenchida
-                else if (colCapacidade.isEmpty() && !colCriterio.isEmpty() && ultimaCapacidade != null) {
-                    if (salvarCriterioSeNaoExistir(colCriterio, TipoCriterio.CRITICO, ultimaCapacidade)) {
-                        critCount++;
-                    }
-                }
+                processarCapacidadeCritItem(colCapacidade, colCriterio, capacidades);
             }
-            return "Sucesso! Criadas " + capsCount + " capacidades e " + critCount + " critérios.";
+            return capacidades;
         }
     }
-    // Método corrigido: retorna boolean para contar critérios adicionados
+
+    private List<CapItemDTO> parseExcelEstruturaToDTO(MultipartFile file) throws IOException {
+        List<CapItemDTO> capacidades = new ArrayList<>();
+        
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            DataFormatter dataFormatter = new DataFormatter();
+
+            for (Row row : sheet) {
+                // Pega o valor da primeira coluna (Capacidade)
+                Cell cellCapacidade = row.getCell(0);
+                String colCapacidade = (cellCapacidade != null) ? dataFormatter.formatCellValue(cellCapacidade).trim() : "";
+                
+                // Pega o valor da segunda coluna (Critério)
+                Cell cellCriterio = row.getCell(1);
+                String colCriterio = (cellCriterio != null) ? dataFormatter.formatCellValue(cellCriterio).trim() : "";
+                
+                if (colCapacidade.isEmpty() && colCriterio.isEmpty()) continue;
+
+                processarCapacidadeCritItem(colCapacidade, colCriterio, capacidades);
+            }
+            return capacidades;
+
+        } catch (Exception e) {
+            throw new IOException("Erro ao processar arquivo Excel/XLSX: " + e.getMessage(), e);
+        }
+    }
+    
+    // Lógica compartilhada de pre-processamento (preenche a lista de CapItemDTO)
+    private void processarCapacidadeCritItem(String colCapacidade, String colCriterio, List<CapItemDTO> capacidades) {
+        
+        CapItemDTO ultimaCapacidade = capacidades.isEmpty() ? null : capacidades.get(capacidades.size() - 1);
+        
+        // Regra de tipagem (usada para sugerir o tipo no frontend)
+        String descLower = colCapacidade.toLowerCase();
+        TipoCapacidade tipoSugerido = TipoCapacidade.TECNICA;
+        
+        if (descLower.contains("socio") || descLower.contains("comport") || descLower.contains("atitude") || descLower.contains("emocional") || descLower.contains("resiliênci") || descLower.contains("autonomia") || descLower.contains("equipe") || descLower.contains("criatividade")) {
+            tipoSugerido = TipoCapacidade.SOCIOEMOCIONAL;
+        }
+
+        // Caso 1: Nova Capacidade e/ou Critério
+        if (!colCapacidade.isEmpty()) {
+            CapItemDTO nova = new CapItemDTO();
+            nova.setDescricao(colCapacidade);
+            nova.setTipo(tipoSugerido);
+            nova.setCriterios(new ArrayList<>());
+            capacidades.add(nova);
+            ultimaCapacidade = nova;
+            
+            // Adiciona critério (se houver critério na mesma linha)
+            if (!colCriterio.isEmpty()) {
+                CritItemDTO crit = new CritItemDTO();
+                crit.setDescricao(colCriterio);
+                crit.setTipo(TipoCriterio.CRITICO); // Default para CRITICO
+                nova.getCriterios().add(crit);
+            }
+        }
+        // Caso 2: Apenas Critério (usa a última Capacidade)
+        else if (colCapacidade.isEmpty() && !colCriterio.isEmpty() && ultimaCapacidade != null) {
+            CritItemDTO crit = new CritItemDTO();
+            crit.setDescricao(colCriterio);
+            crit.setTipo(TipoCriterio.CRITICO); // Default para CRITICO
+            ultimaCapacidade.getCriterios().add(crit);
+        }
+    }
+    
+    // --- Métodos Auxiliares de Salvar (Mantidos) ---
     private boolean salvarCriterioSeNaoExistir(String descricao, TipoCriterio tipo, Capacidade capacidade) {
+        // ... (Mantido Inalterado, mas precisa da implementação de body do arquivo)
         boolean existe = false;
         
         if (capacidade.getCriterios() != null) {

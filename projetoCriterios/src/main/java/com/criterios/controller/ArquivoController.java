@@ -1,5 +1,6 @@
 package com.criterios.controller;
 
+import com.criterios.dto.EstruturaImportacaoDTO;
 import com.criterios.services.ArquivoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -59,16 +60,19 @@ public class ArquivoController {
         }
     }
 
-    // 4. [NOVO] Importação de Estrutura Completa (Planilha Mestre: Capacidades + Critérios)
+    // 4. [ATUALIZADO] Pré-processamento de Estrutura Completa (Planilha Mestre: Capacidades + Critérios)
+    // Retorna a estrutura em JSON para o frontend editar/confirmar.
     @PostMapping("/importar-estrutura-completa")
-    public ResponseEntity<String> uploadEstruturaCompleta(
+    public ResponseEntity<?> uploadEstruturaCompleta(
             @RequestParam("file") MultipartFile file, 
             @RequestParam("disciplinaId") Long disciplinaId) {
         try {
-            String resultado = arquivoService.importarEstruturaCompleta(file, disciplinaId);
-            return ResponseEntity.ok(resultado);
+            // Chama o pré-processamento que faz o parse do Excel/CSV
+            EstruturaImportacaoDTO dto = arquivoService.preProcessarEstrutura(file, disciplinaId);
+            // Retorna o DTO com a estrutura para a tela de revisão
+            return ResponseEntity.ok(dto);
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Erro ao importar estrutura: " + e.getMessage());
+            return ResponseEntity.internalServerError().body("Erro ao processar arquivo: " + e.getMessage());
         }
     }
 }

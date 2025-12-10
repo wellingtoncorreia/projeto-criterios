@@ -1,15 +1,28 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { ArrowLeft, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, Edit, Upload, Wand2 } from 'lucide-react';
 import Link from 'next/link';
 import api from '@/app/services/api';
+import Swal from 'sweetalert2';
 import { Disciplina, Capacidade } from '@/app/types';
 import GerenciadorCapacidades from './GerenciadorCapacidades';
 import ImportadorInterativo from '@/app/components/forms/ImportadorIterativo';
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+// Interface auxiliar para tipar os dados que passamos para o modal de edição
+interface CapacidadeParaEdicao {
+  id: string; // ID temporário para o React
+  descricao: string;
+  tipo: 'TECNICA' | 'SOCIOEMOCIONAL';
+  criterios: {
+    id: string;
+    descricao: string;
+    tipo: 'CRITICO' | 'DESEJAVEL';
+  }[];
 }
 
 export default function DetalhesDisciplinaPage({ params }: PageProps) {
@@ -19,7 +32,10 @@ export default function DetalhesDisciplinaPage({ params }: PageProps) {
   const [capacidades, setCapacidades] = useState<Capacidade[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Novo estado para controlar se o modal está aberto e o modo de operação
   const [showImportador, setShowImportador] = useState(false);
+  const [initialData, setInitialData] = useState<CapacidadeParaEdicao[] | null>(null);
+  
   const [gerandoNiveis, setGerandoNiveis] = useState(false);
 
   async function carregarDados() {
@@ -27,27 +43,64 @@ export default function DetalhesDisciplinaPage({ params }: PageProps) {
     try {
       const [resDisc, resCap] = await Promise.all([
         api.get(`/disciplinas/${id}`),
+        // O backend retorna a estrutura aninhada, o que é perfeito
         api.get(`/disciplinas/${id}/capacidades`) 
       ]);
       setDisciplina(resDisc.data);
       setCapacidades(resCap.data);
     } catch (error) {
       console.error("Erro ao carregar disciplina:", error);
+      Swal.fire('Erro', 'Não foi possível carregar os dados da disciplina.', 'error');
     } finally {
       setLoading(false);
     }
   }
 
+  // Função para abrir o modal no modo EDIÇÃO
+  function handleOpenEditor(mode: 'import' | 'edit') {
+    if (mode === 'import') {
+      // Modo Importação: Começa do zero (Passo 1: Upload)
+      setInitialData(null);
+      setShowImportador(true);
+    } else {
+      // Modo Edição: Mapeia dados existentes para o formato interno do modal
+      const mappedData: CapacidadeParaEdicao[] = capacidades.map(cap => ({
+        // Usamos o ID real aqui, mas o modal tratará como ID de controle
+        id: cap.id.toString(), 
+        descricao: cap.descricao,
+        tipo: cap.tipo,
+        criterios: cap.criterios?.map(crit => ({
+          id: crit.id.toString(),
+          descricao: crit.descricao,
+          tipo: crit.tipo,
+        })) || [],
+      }));
+      setInitialData(mappedData);
+      setShowImportador(true);
+    }
+  }
+
   // Função para chamar a geração automática
   async function handleGerarNiveis() {
-    if (!confirm("Isso apagará os níveis de avaliação atuais e gerará novos baseados nos critérios cadastrados. Continuar?")) return;
+    const result = await Swal.fire({
+      title: 'Gerar Níveis de Avaliação?',
+      text: 'Isso apagará os níveis de avaliação atuais e gerará novos baseados nos critérios cadastrados.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Sim, gerar',
+      cancelButtonText: 'Cancelar'
+    });
+    
+    if (!result.isConfirmed) return;
     
     setGerandoNiveis(true);
     try {
         await api.post(`/gestao/disciplinas/${id}/gerar-niveis`);
-        alert("Níveis gerados com sucesso! A régua de avaliação foi atualizada.");
+        Swal.fire('Sucesso!', 'Níveis gerados com sucesso! A régua de avaliação foi atualizada.', 'success');
     } catch (error) {
-        alert("Erro ao gerar níveis.");
+        Swal.fire('Erro', 'Erro ao gerar níveis.', 'error');
         console.error(error);
     } finally {
         setGerandoNiveis(false);
@@ -84,10 +137,18 @@ export default function DetalhesDisciplinaPage({ params }: PageProps) {
 
             {/* Botão Importar */}
             <button 
-                onClick={() => setShowImportador(true)}
+                onClick={() => handleOpenEditor('import')}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
             >
                 <Upload size={18} /> Importar Planilha
+            </button>
+
+            {/* Botão Editar (Abre o modal no modo edição) */}
+            <button 
+                onClick={() => handleOpenEditor('edit')}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
+            >
+                <Edit size={18} /> Editar Estrutura
             </button>
         </div>
        </div>
@@ -106,9 +167,12 @@ export default function DetalhesDisciplinaPage({ params }: PageProps) {
         </div>
       </div>
 
+      {/* Renderiza o Importador/Editor Interativo como um modal */}
       {showImportador && (
         <ImportadorInterativo 
             disciplinaId={Number(id)}
+            initialData={initialData} // Passa os dados existentes para o modo edição
+            nomeDisciplina={disciplina.nome} // Passa o nome para o cabeçalho
             onClose={() => setShowImportador(false)}
             onSuccess={() => {
                 setShowImportador(false); 

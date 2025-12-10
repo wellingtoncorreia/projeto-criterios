@@ -1,42 +1,64 @@
 'use client';
 import Link from 'next/link';
-import { Plus, Users, GraduationCap, UserCheck } from 'lucide-react';
+import { Plus, Users, GraduationCap, UserCheck, Edit, Trash2 } from 'lucide-react'; // Adicionado Trash2
 import { Turma } from '@/app/types';
-
-// Função para buscar dados (Server Side - verifique se o endpoint não precisa de autenticação ou use api client side se preferir)
-// Nota: Em Next.js App Router Server Components, passar cookies/tokens pode ser chato. 
-// Se der erro de auth, transforme em 'use client' e use o useEffect com o api.ts
-async function getTurmas(): Promise<Turma[]> {
-  try {
-    // Atenção: fetch direto no server side precisa da URL completa
-    // Se precisar de token, o ideal é fazer client-side ou usar headers()
-    const res = await fetch('http://localhost:8080/api/turmas', { 
-        cache: 'no-store',
-        // headers: { Authorization: ... } // Caso precise de token no server side
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch (err) {
-    return [];
-  }
-}
-
-// Para facilitar, vamos fazer Client Component para garantir o Token do localStorage
-// Se preferir Server Component, precisa configurar a passagem de cookie
 
 import { useEffect, useState } from 'react';
 import api from '@/app/services/api';
+import Swal from 'sweetalert2'; // Importado Swal
 
 export default function TurmasPage() {
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Função para recarregar as turmas
+  async function carregarTurmas() {
+    try {
+      const res = await api.get('/turmas');
+      setTurmas(res.data);
+    } catch (err) {
+      console.error(err);
+      Swal.fire('Erro', 'Não foi possível carregar a lista de turmas.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    api.get('/turmas')
-      .then(res => setTurmas(res.data))
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false));
+    carregarTurmas();
   }, []);
+
+  // [NOVA FUNÇÃO] Manipulador de Exclusão
+  async function handleDelete(id: number, nome: string) {
+    const result = await Swal.fire({
+      title: 'Excluir Turma?',
+      text: `Você está prestes a apagar a turma "${nome}". Isso EXCLUIRÁ PERMANENTEMENTE a turma, todos os alunos e todo o histórico de avaliações vinculados.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sim, excluir permanentemente',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await api.delete(`/turmas/${id}`);
+        
+        await Swal.fire(
+          'Excluída!',
+          'A turma foi removida com sucesso.',
+          'success'
+        );
+        
+        // Atualiza a lista
+        carregarTurmas();
+      } catch (error) {
+        console.error(error);
+        Swal.fire('Erro', 'Não foi possível excluir a turma.', 'error');
+      }
+    }
+  }
 
   if(loading) return <div className="p-8 text-center text-gray-500">Carregando turmas...</div>;
 
@@ -100,19 +122,43 @@ export default function TurmasPage() {
                 </div>
               </div>
               
-              <div className="border-t pt-4 mt-2 grid grid-cols-2 gap-2">
+              {/* Seção de Ações: Agora com 4 colunas (Editar, Excluir, Alunos, Avaliar) */}
+              <div className="border-t pt-4 mt-2 grid grid-cols-4 gap-2">
+                
+                {/* Botão de Editar */}
                 <Link 
-                  href={`/gestao/turmas/${t.id}`}
-                  className="flex items-center justify-center gap-2 text-center bg-gray-50 text-blue-600 font-semibold py-2 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition text-sm"
+                    href={`/gestao/turmas/${t.id}/editar`}
+                    className="flex items-center justify-center gap-1 text-center bg-yellow-50 text-yellow-700 font-semibold py-2 rounded border border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300 transition text-xs"
+                    title="Editar Turma"
                 >
-                  <Users size={16} /> Alunos
+                    <Edit size={14} /> Editar
                 </Link>
 
+                {/* Botão de Excluir */}
+                <button
+                    onClick={() => handleDelete(t.id, t.nome)}
+                    className="flex items-center justify-center gap-1 text-center bg-red-50 text-red-700 font-semibold py-2 rounded border border-red-200 hover:bg-red-100 hover:border-red-300 transition text-xs"
+                    title="Excluir Turma e Dados"
+                >
+                    <Trash2 size={14} /> Excluir
+                </button>
+
+                {/* Link para Alunos */}
+                <Link 
+                  href={`/gestao/turmas/${t.id}`}
+                  className="flex items-center justify-center gap-1 text-center bg-gray-50 text-blue-600 font-semibold py-2 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition text-xs"
+                  title="Gerenciar Alunos"
+                >
+                  <Users size={14} /> Alunos
+                </Link>
+
+                {/* Link para Avaliação */}
                 <Link 
                   href={`/gestao/turmas/${t.id}/avaliacao`}
-                  className="flex items-center justify-center gap-2 text-center bg-green-50 text-green-700 font-semibold py-2 rounded border border-green-200 hover:bg-green-100 hover:border-green-300 transition text-sm"
+                  className="flex items-center justify-center gap-1 text-center bg-green-50 text-green-700 font-semibold py-2 rounded border border-green-200 hover:bg-green-100 hover:border-green-300 transition text-xs"
+                  title="Lançar Notas"
                 >
-                  <GraduationCap size={16} /> Avaliar
+                  <GraduationCap size={14} /> Avaliar
                 </Link>
               </div>
             </div>

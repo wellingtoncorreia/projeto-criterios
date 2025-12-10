@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Save, ArrowLeft } from 'lucide-react';
 import api from '@/app/services/api';
 import Link from 'next/link';
+import Swal from 'sweetalert2';
 
 export default function NovaDisciplinaPage() {
   const router = useRouter();
@@ -24,11 +25,11 @@ export default function NovaDisciplinaPage() {
 
     try {
       await api.post('/disciplinas', data);
-      alert('Disciplina criada com sucesso!');
+      Swal.fire('Sucesso!', 'Disciplina criada com sucesso!', 'success');
       router.push('/gestao/disciplinas');
       router.refresh(); 
     } catch (error) {
-      alert('Erro ao criar disciplina.');
+      Swal.fire('Erro', 'Erro ao criar disciplina.', 'error');
       console.error(error);
     } finally {
       setLoading(false);

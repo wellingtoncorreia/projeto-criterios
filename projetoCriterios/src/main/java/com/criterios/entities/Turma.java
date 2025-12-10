@@ -16,7 +16,8 @@ public class Turma {
     private String anoSemestre;
     private Integer termoAtual;
 
-    @OneToMany(mappedBy = "turma")
+    // [ALTERADO] Adicionado cascade para apagar alunos junto com a turma
+    @OneToMany(mappedBy = "turma", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Aluno> alunos;
 
     // [ALTERADO] Agora suporta múltiplos professores (Regra de Negócio: 1 ou 2)

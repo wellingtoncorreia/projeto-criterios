@@ -118,6 +118,16 @@ public class ReferenciaController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // [NOVO] Exclusão de Turma por ID (com remoção em cascata garantida pelo entity)
+    @DeleteMapping("/turmas/{id}")
+    public ResponseEntity<Void> deletarTurma(@PathVariable Long id) {
+        if (!turmaRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        turmaRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+    
     @GetMapping("/turmas/{turmaId}/disciplinas")
     public ResponseEntity<List<Disciplina>> listarDisciplinasPorTurma(@PathVariable Long turmaId) {
         return turmaRepository.findById(turmaId)

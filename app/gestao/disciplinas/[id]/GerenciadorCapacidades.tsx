@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Capacidade, TipoCapacidade, TipoCriterio } from '@/app/types';
 import { Plus, Trash2, CheckCircle, AlertCircle, UploadCloud } from 'lucide-react';
 import api from '@/app/services/api';
+import Swal from 'sweetalert2';
 import ImportadorCriterios from '@/app/components/forms/ImportadorCriterios';
 
 interface Props {
@@ -40,7 +41,7 @@ export default function GerenciadorCapacidades({ disciplinaId, capacidadesInicia
             setCapacidades([...capacidades, { ...res.data, criterios: [] }]);
             setNovaCapDesc('');
         } catch (error) {
-            alert('Erro ao adicionar capacidade. Verifique o backend.');
+            Swal.fire('Erro', 'Erro ao adicionar capacidade. Verifique o backend.', 'error');
         } finally {
             setLoading(false);
         }
@@ -71,7 +72,7 @@ export default function GerenciadorCapacidades({ disciplinaId, capacidadesInicia
             setNovoCritDesc('');
             setAddCriterioEm(null);
         } catch (error) {
-            alert('Erro ao adicionar critério.');
+            Swal.fire('Erro', 'Erro ao adicionar critério.', 'error');
             console.error(error);
         }
     }

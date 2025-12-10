@@ -53,6 +53,10 @@ public class AvaliacaoServices {
         avaliacao.setCriterio(criterio);
         avaliacao.setAtendeu(dto.getAtendeu());
         avaliacao.setObservacao(dto.getObservacao() != null ? dto.getObservacao() : "");
+        
+        // Garante que se houve alteração, a avaliação não está finalizada
+        avaliacao.setFinalizada(false); 
+        avaliacao.setNivelFinal(null);
 
         return avaliacaoRepository.save(avaliacao);
     }
@@ -110,13 +114,74 @@ public class AvaliacaoServices {
                 .build();
     }
 
-    // [NOVO] Gera o boletim consolidado para toda a turma
     @Transactional(readOnly = true)
     public List<ResultadoBoletimDTO> gerarBoletimTurma(Long turmaId, Long disciplinaId) {
         List<Aluno> alunos = alunoRepository.findByTurmaId(turmaId);
         
         return alunos.stream()
                 .map(aluno -> calcularNivelAluno(aluno.getId(), disciplinaId))
+                .collect(Collectors.toList());
+    }
+    
+    // [NOVO MÉTODO] Finaliza UMA avaliação
+    @Transactional
+    public ResultadoBoletimDTO finalizarAvaliacao(Long alunoId, Long disciplinaId) {
+        
+        ResultadoBoletimDTO resultado = calcularNivelAluno(alunoId, disciplinaId);
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId);
+
+        if (avaliacoes.isEmpty()) {
+            throw new RuntimeException("Nenhuma nota encontrada para finalizar.");
+        }
+
+        for (Avaliacao av : avaliacoes) {
+            av.setFinalizada(true);
+            av.setNivelFinal(resultado.getNivelAlcancado());
+            avaliacaoRepository.save(av);
+        }
+        
+        return resultado; 
+    }
+
+    // [NOVO MÉTODO] Reabre UMA avaliação
+    @Transactional
+    public void reabrirAvaliacao(Long alunoId, Long disciplinaId) {
+        
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId);
+
+        if (avaliacoes.isEmpty()) {
+            throw new RuntimeException("Nenhuma nota para reabrir.");
+        }
+        
+        for (Avaliacao av : avaliacoes) {
+            av.setFinalizada(false);
+            av.setNivelFinal(null);
+            avaliacaoRepository.save(av);
+        }
+    }
+    
+    // [NOVO MÉTODO] Finaliza TODAS as avaliações da turma
+    @Transactional
+    public List<ResultadoBoletimDTO> finalizarAvaliacaoTurma(Long turmaId, Long disciplinaId) {
+        
+        List<Aluno> alunos = alunoRepository.findByTurmaId(turmaId);
+        
+        if (alunos.isEmpty()) {
+            throw new RuntimeException("Não há alunos para finalizar nesta turma.");
+        }
+
+        // Itera sobre todos os alunos e tenta finalizar a avaliação para cada um
+        return alunos.stream()
+                .map(aluno -> {
+                    try {
+                        return finalizarAvaliacao(aluno.getId(), disciplinaId);
+                    } catch (RuntimeException e) {
+                        // Se um aluno não tiver notas, ele é ignorado (retorna null)
+                        System.err.println("Aviso: Falha ao finalizar aluno " + aluno.getNome() + ": " + e.getMessage());
+                        return null; 
+                    }
+                })
+                .filter(result -> result != null) // Retira os alunos que falharam/não tinham notas
                 .collect(Collectors.toList());
     }
 }
