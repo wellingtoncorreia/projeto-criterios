@@ -19,28 +19,31 @@ public class AvaliacaoServices {
     private final AlunoRepository alunoRepository;
     private final CriterioRepository criterioRepository;
     private final NivelAvaliacaoRepository nivelRepository;
+    private final EstruturaDisciplinaRepository estruturaDisciplinaRepository; // <-- ADICIONADO
 
     @Transactional(timeout = 30)
     public Avaliacao registrarAvaliacao(AvaliacaoDTO dto) {
-        // Validação 1: Aluno existe e pertence à turma
+        // Validação 1: Aluno existe
         Aluno aluno = alunoRepository.findById(dto.getAlunoId())
                 .orElseThrow(() -> new RuntimeException("Aluno não encontrado"));
         
         if (aluno.getTurma() == null) {
             throw new RuntimeException("Aluno não pertence a nenhuma turma");
         }
-
+        
         // Validação 2: Critério existe
         Criterio criterio = criterioRepository.findById(dto.getCriterioId())
                 .orElseThrow(() -> new RuntimeException("Critério não encontrado"));
 
-        // Validação 3: Critério pertence à disciplina informada (prevenção de integração)
-        if (criterio.getCapacidade() == null || criterio.getCapacidade().getDisciplina() == null) {
-            throw new RuntimeException("Critério sem disciplina vinculada");
+        // Validação 3: Critério pertence à EstruturaDisciplina (Snapshot) informada
+        if (criterio.getCapacidade() == null || criterio.getCapacidade().getEstruturaDisciplina() == null) {
+            throw new RuntimeException("Critério sem estrutura vinculada");
         }
 
-        if (!criterio.getCapacidade().getDisciplina().getId().equals(dto.getDisciplinaId())) {
-            throw new RuntimeException("Critério não pertence à disciplina informada");
+        // [AJUSTE DE VERSIONAMENTO] Valida se o Critério faz parte do Snapshot da Turma
+        // Assume-se que AvaliacaoDTO possui getEstruturaDisciplinaId()
+        if (!criterio.getCapacidade().getEstruturaDisciplina().getId().equals(dto.getEstruturaDisciplinaId())) { 
+            throw new RuntimeException("Critério não pertence à estrutura de avaliação informada");
         }
 
         // Busca ou cria avaliação existente
@@ -62,8 +65,9 @@ public class AvaliacaoServices {
     }
 
     @Transactional(readOnly = true)
-    public ResultadoBoletimDTO calcularNivelAluno(Long alunoId, Long disciplinaId) {
-        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId);
+    public ResultadoBoletimDTO calcularNivelAluno(Long alunoId, Long estruturaDisciplinaId) { // Recebe ID do Snapshot
+        // [CORRIGIDO] findByAlunoAndEstruturaDisciplina (Chama o método do Snapshot)
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, estruturaDisciplinaId);
 
         int criticosAtendidos = 0;
         int desejaveisAtendidos = 0;
@@ -78,14 +82,20 @@ public class AvaliacaoServices {
             }
         }
 
-        List<Criterio> todosCriterios = criterioRepository.findByDisciplinaId(disciplinaId);
+        // [AJUSTE] Busca Critérios pelo ID do Snapshot
+        List<Criterio> todosCriterios = criterioRepository.findByEstruturaDisciplinaId(estruturaDisciplinaId); 
         int totalCriticos = (int) todosCriterios.stream().filter(c -> c.getTipo() == TipoCriterio.CRITICO).count();
         int totalDesejaveis = (int) todosCriterios.stream().filter(c -> c.getTipo() == TipoCriterio.DESEJAVEL).count();
         
-        String nomeDisciplina = todosCriterios.isEmpty() ? "N/A" : todosCriterios.get(0).getCapacidade().getDisciplina().getNome();
+        // [AJUSTE] Pega o nome da disciplina a partir do Snapshot
+        String nomeDisciplina = estruturaDisciplinaRepository.findById(estruturaDisciplinaId)
+            .map(EstruturaDisciplina::getNomeDisciplina)
+            .orElse("N/A");
+        
         String nomeAluno = alunoRepository.findById(alunoId).map(Aluno::getNome).orElse("N/A");
 
-        List<NivelAvaliacao> niveis = nivelRepository.findByDisciplinaIdOrderByNivelDesc(disciplinaId);
+        // [AJUSTE] Busca níveis de avaliação pelo ID do Snapshot
+        List<NivelAvaliacao> niveis = nivelRepository.findByEstruturaDisciplinaIdOrderByNivelDesc(estruturaDisciplinaId);
         Integer nivelFinal = 0;
 
         for (NivelAvaliacao n : niveis) {
@@ -115,20 +125,20 @@ public class AvaliacaoServices {
     }
 
     @Transactional(readOnly = true)
-    public List<ResultadoBoletimDTO> gerarBoletimTurma(Long turmaId, Long disciplinaId) {
+    public List<ResultadoBoletimDTO> gerarBoletimTurma(Long turmaId, Long estruturaDisciplinaId) { // Recebe ID do Snapshot
         List<Aluno> alunos = alunoRepository.findByTurmaId(turmaId);
         
         return alunos.stream()
-                .map(aluno -> calcularNivelAluno(aluno.getId(), disciplinaId))
+                .map(aluno -> calcularNivelAluno(aluno.getId(), estruturaDisciplinaId))
                 .collect(Collectors.toList());
     }
     
-    // [NOVO MÉTODO] Finaliza UMA avaliação
     @Transactional
-    public ResultadoBoletimDTO finalizarAvaliacao(Long alunoId, Long disciplinaId) {
+    public ResultadoBoletimDTO finalizarAvaliacao(Long alunoId, Long estruturaDisciplinaId) { // Recebe ID do Snapshot
         
-        ResultadoBoletimDTO resultado = calcularNivelAluno(alunoId, disciplinaId);
-        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId);
+        ResultadoBoletimDTO resultado = calcularNivelAluno(alunoId, estruturaDisciplinaId);
+        // [CORRIGIDO] findByAlunoAndEstruturaDisciplina
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, estruturaDisciplinaId);
 
         if (avaliacoes.isEmpty()) {
             throw new RuntimeException("Nenhuma nota encontrada para finalizar.");
@@ -143,11 +153,11 @@ public class AvaliacaoServices {
         return resultado; 
     }
 
-    // [NOVO MÉTODO] Reabre UMA avaliação
     @Transactional
-    public void reabrirAvaliacao(Long alunoId, Long disciplinaId) {
+    public void reabrirAvaliacao(Long alunoId, Long estruturaDisciplinaId) { // Recebe ID do Snapshot
         
-        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId);
+        // [CORRIGIDO] findByAlunoAndEstruturaDisciplina
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, estruturaDisciplinaId);
 
         if (avaliacoes.isEmpty()) {
             throw new RuntimeException("Nenhuma nota para reabrir.");
@@ -160,9 +170,8 @@ public class AvaliacaoServices {
         }
     }
     
-    // [NOVO MÉTODO] Finaliza TODAS as avaliações da turma
     @Transactional
-    public List<ResultadoBoletimDTO> finalizarAvaliacaoTurma(Long turmaId, Long disciplinaId) {
+    public List<ResultadoBoletimDTO> finalizarAvaliacaoTurma(Long turmaId, Long estruturaDisciplinaId) { // Recebe ID do Snapshot
         
         List<Aluno> alunos = alunoRepository.findByTurmaId(turmaId);
         
@@ -170,18 +179,16 @@ public class AvaliacaoServices {
             throw new RuntimeException("Não há alunos para finalizar nesta turma.");
         }
 
-        // Itera sobre todos os alunos e tenta finalizar a avaliação para cada um
         return alunos.stream()
                 .map(aluno -> {
                     try {
-                        return finalizarAvaliacao(aluno.getId(), disciplinaId);
+                        return finalizarAvaliacao(aluno.getId(), estruturaDisciplinaId);
                     } catch (RuntimeException e) {
-                        // Se um aluno não tiver notas, ele é ignorado (retorna null)
                         System.err.println("Aviso: Falha ao finalizar aluno " + aluno.getNome() + ": " + e.getMessage());
                         return null; 
                     }
                 })
-                .filter(result -> result != null) // Retira os alunos que falharam/não tinham notas
+                .filter(result -> result != null)
                 .collect(Collectors.toList());
     }
 }

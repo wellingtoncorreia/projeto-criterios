@@ -5,60 +5,58 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
-import { Users, BookOpen, GraduationCap, TrendingUp, AlertTriangle, Filter, CheckCircle } from 'lucide-react';
+import { TrendingUp, Filter, AlertTriangle } from 'lucide-react';
 import api from '@/app/services/api';
-import Swal from 'sweetalert2'; // [NOVO]
+import Swal from 'sweetalert2'; 
+import { Turma } from '@/app/types'; // [CORRIGIDO] Importando Turma do arquivo de tipos
 
 // --- Tipagens ---
-interface Turma { id: number; nome: string; anoSemestre: string; }
-interface Disciplina { id: number; nome: string; }
 interface Boletim { nomeAluno: string; nivelAlcancado: number; }
 
 const COLORS_PIE = ['#10b981', '#ef4444']; 
 
 export default function DashboardPage() {
   const [turmas, setTurmas] = useState<Turma[]>([]);
-  const [disciplinas, setDisciplinas] = useState<Disciplina[]>([]);
-  const [selectedTurma, setSelectedTurma] = useState<number | string>("");
-  const [selectedDisciplina, setSelectedDisciplina] = useState<number | string>("");
+  const [selectedTurmaId, setSelectedTurmaId] = useState<number | string>("");
   const [boletins, setBoletins] = useState<Boletim[]>([]);
   const [loadingDados, setLoadingDados] = useState(false);
   const [loadingFiltros, setLoadingFiltros] = useState(true);
 
-  const nomeTurmaAtual = turmas.find(t => t.id === Number(selectedTurma))?.nome || "Selecione...";
-  const nomeDisciplinaAtual = disciplinas.find(d => d.id === Number(selectedDisciplina))?.nome || "...";
+  // Encontra a turma selecionada e extrai os dados
+  const selectedTurma = turmas.find(t => t.id === Number(selectedTurmaId));
+  const estruturaSnapshotId = selectedTurma?.estruturaSnapshotId;
 
+  // Usa dados da turma selecionada
+  const nomeTurmaAtual = selectedTurma?.nome || "Selecione...";
+  const nomeDisciplinaAtual = selectedTurma?.nomeDisciplina || "...";
+  
+  // 1. Carregar Turmas
   useEffect(() => {
-    api.get('/turmas').then(res => {
+    // [CORRIGIDO] Usando Turma[] no generic
+    api.get<Turma[]>('/turmas').then(res => {
         setTurmas(res.data);
-        if (res.data.length > 0) setSelectedTurma(res.data[0].id);
+        if (res.data.length > 0) setSelectedTurmaId(res.data[0].id);
     }).catch(err => {
         console.error(err);
-        Swal.fire('Erro', 'Não foi possível carregar as turmas.', 'error'); // [NOVO]
+        Swal.fire('Erro', 'Não foi possível carregar as turmas.', 'error'); 
     }).finally(() => setLoadingFiltros(false));
   }, []);
+  
+  // O segundo useEffect que carregava disciplinas foi removido, pois o Snapshot ID está no objeto Turma.
 
+  // 2. Carregar Dados do Boletim
+  // [MODIFICADO] Depende do ID da turma e do ID do snapshot.
   useEffect(() => {
-    if (!selectedTurma) return;
-    api.get(`/turmas/${selectedTurma}/disciplinas`)
-        .then(res => {
-            setDisciplinas(res.data);
-            if (res.data.length > 0) {
-                setSelectedDisciplina(res.data[0].id);
-            } else {
-                setSelectedDisciplina("");
-                setBoletins([]);
-            }
-        })
-        .catch(err => console.error(err));
-  }, [selectedTurma]);
-
-  useEffect(() => {
-    if (!selectedTurma || !selectedDisciplina) return;
+    // Verifica se a turma e o Snapshot ID (estrutura) estão disponíveis
+    if (!selectedTurmaId || !estruturaSnapshotId) { 
+        setBoletins([]);
+        return;
+    }
 
     setLoadingDados(true);
-    api.get(`/avaliacoes/boletim/turma/${selectedTurma}`, {
-        params: { disciplinaId: selectedDisciplina }
+    // [CORREÇÃO CRÍTICA DO BUG 403] Trocando 'disciplinaId' pelo parâmetro correto 'estruturaDisciplinaId'.
+    api.get<Boletim[]>(`/avaliacoes/boletim/turma/${selectedTurmaId}`, {
+        params: { estruturaDisciplinaId: estruturaSnapshotId } 
     })
     .then(res => setBoletins(res.data))
     .catch(err => {
@@ -75,7 +73,7 @@ export default function DashboardPage() {
     })
     .finally(() => setLoadingDados(false));
 
-  }, [selectedTurma, selectedDisciplina]);
+  }, [selectedTurmaId, estruturaSnapshotId]);
 
   // Cálculos
   const totalAlunos = boletins.length;
@@ -111,16 +109,22 @@ export default function DashboardPage() {
       {/* Filtros */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row gap-4 items-center">
         <div className="flex items-center gap-2 text-indigo-600 font-semibold px-2 border-r pr-4 border-gray-200"><Filter size={20} /> Filtros:</div>
+        
+        {/* Seletor de Turma */}
         <div className="flex-1">
-            <select className="w-full p-2 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg" value={selectedTurma} onChange={(e) => setSelectedTurma(e.target.value)}>
+            <select 
+                className="w-full p-2 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg" 
+                value={selectedTurmaId} 
+                onChange={(e) => setSelectedTurmaId(e.target.value)}
+            >
                 {turmas.map(t => <option key={t.id} value={t.id}>{t.nome} ({t.anoSemestre})</option>)}
             </select>
         </div>
-        <div className="flex-1">
-            <select className="w-full p-2 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg" value={selectedDisciplina} onChange={(e) => setSelectedDisciplina(e.target.value)} disabled={!selectedTurma}>
-                {disciplinas.length === 0 && <option>Nenhuma disciplina para este termo</option>}
-                {disciplinas.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-            </select>
+        
+        {/* Informação da Disciplina (Não mais um seletor) */}
+        <div className="flex-1 text-sm font-medium text-gray-700 bg-gray-100 p-2 rounded-lg border border-gray-300">
+            Disciplina: <span className="font-bold text-indigo-700">{nomeDisciplinaAtual}</span>
+            {estruturaSnapshotId && <span className="text-xs text-gray-500 ml-2">(Snapshot ID: {estruturaSnapshotId})</span>}
         </div>
       </div>
 
@@ -128,7 +132,15 @@ export default function DashboardPage() {
       {loadingDados ? (
         <div className="text-center py-20 text-gray-400">Carregando dados...</div>
       ) : totalAlunos === 0 ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">Nenhum dado encontrado.</div>
+        // Adicionando verificação se a estrutura está disponível para exibir a mensagem correta
+        !estruturaSnapshotId ? (
+             <div className="text-center py-20 bg-white rounded-xl border border-dashed border-red-300 text-red-500">
+                <AlertTriangle size={32} className="mx-auto mb-2"/>
+                <p>A Turma selecionada não possui uma estrutura de avaliação (Snapshot ID) definida.</p>
+            </div>
+        ) : (
+            <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">Nenhum dado de boletim encontrado para a disciplina {nomeDisciplinaAtual}.</div>
+        )
       ) : (
         <>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

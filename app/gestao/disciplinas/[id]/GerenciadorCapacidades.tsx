@@ -1,244 +1,235 @@
 'use client';
 
-import { useState } from 'react';
-import { Capacidade, TipoCapacidade, TipoCriterio } from '@/app/types';
-import { Plus, Trash2, CheckCircle, AlertCircle, UploadCloud } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, ChevronDown, ChevronUp, Edit, Trash2, Loader2, AlertTriangle, UserCheck } from 'lucide-react';
+import { Capacidade, Criterio, TipoCapacidade, TipoCriterio } from '@/app/types';
 import api from '@/app/services/api';
 import Swal from 'sweetalert2';
-import ImportadorCriterios from '@/app/components/forms/ImportadorCriterios';
 
 interface Props {
-    disciplinaId: number;
-    capacidadesIniciais: Capacidade[];
+  disciplinaId: number;
+  capacidadesIniciais: Capacidade[];
+  onEstruturaChange: () => void; // Callback para recarregar dados do pai
 }
 
-export default function GerenciadorCapacidades({ disciplinaId, capacidadesIniciais }: Props) {
-    const [capacidades, setCapacidades] = useState<Capacidade[]>(capacidadesIniciais);
-    const [loading, setLoading] = useState(false);
+// Interface auxiliar para novos critérios
+interface NovoCriterio {
+    id: string; // ID temporário
+    descricao: string;
+    tipo: TipoCriterio;
+    capacidadeId: number;
+}
 
-    // Estados para nova Capacidade
-    const [novaCapDesc, setNovaCapDesc] = useState('');
-    const [novaCapTipo, setNovaCapTipo] = useState<TipoCapacidade>('TECNICA');
+export default function GerenciadorCapacidades({ disciplinaId, capacidadesIniciais, onEstruturaChange }: Props) {
+  
+  // O estado interno armazena as capacidades e seus critérios.
+  const [capacidades, setCapacidades] = useState<Capacidade[]>(capacidadesIniciais);
+  const [expandedCapacities, setExpandedCapacities] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [novoCrit, setNovoCrit] = useState<NovoCriterio | null>(null);
 
-    // Estados para novo Critério
-    const [addCriterioEm, setAddCriterioEm] = useState<number | null>(null);
-    const [novoCritDesc, setNovoCritDesc] = useState('');
-    const [novoCritTipo, setNovoCritTipo] = useState<TipoCriterio>('CRITICO');
+  // [CORREÇÃO] Sincroniza o estado interno com o prop 'capacidadesIniciais'
+  // Garante que, após o salvamento no modal, a lista de capacidades seja atualizada.
+  useEffect(() => {
+    setCapacidades(capacidadesIniciais);
+  }, [capacidadesIniciais]);
+  
+  // --- Funções de Ação ---
 
-    // [NOVO] Estado para controle de importação
-    const [importandoEm, setImportandoEm] = useState<number | null>(null);
+  const toggleExpand = (id: number) => {
+    setExpandedCapacities(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
 
-    // --- AÇÕES DE CAPACIDADE ---
-    async function adicionarCapacidade() {
-        if (!novaCapDesc.trim()) return;
-        setLoading(true);
-        try {
-            const res = await api.post('/capacidades', {
-                descricao: novaCapDesc,
-                tipo: novaCapTipo,
-                disciplina: { id: disciplinaId }
-            });
-            setCapacidades([...capacidades, { ...res.data, criterios: [] }]);
-            setNovaCapDesc('');
-        } catch (error) {
-            Swal.fire('Erro', 'Erro ao adicionar capacidade. Verifique o backend.', 'error');
-        } finally {
-            setLoading(false);
-        }
+  const handleCreateCriterio = async (capacidadeId: number) => {
+    if (!novoCrit || novoCrit.descricao.trim() === "") {
+        Swal.fire('Atenção', 'A descrição do critério não pode ser vazia.', 'warning');
+        return;
     }
+    
+    setLoading(true);
+    try {
+        const payload = {
+            capacidadeId: capacidadeId,
+            descricao: novoCrit.descricao,
+            tipo: novoCrit.tipo,
+        };
 
-    // --- AÇÕES DE CRITÉRIO ---
-    async function adicionarCriterio(capacidadeId: number) {
-        if (!novoCritDesc.trim()) return;
-
-        try {
-            const params = new URLSearchParams();
-            params.append('capacidadeId', capacidadeId.toString());
-            params.append('descricao', novoCritDesc);
-            params.append('tipo', novoCritTipo);
-
-            const res = await api.post(`/gestao/criterios?${params.toString()}`);
-
-            setCapacidades(prev => prev.map(cap => {
-                if (cap.id === capacidadeId) {
-                    return {
-                        ...cap,
-                        criterios: [...(cap.criterios || []), res.data]
-                    };
-                }
-                return cap;
-            }));
-
-            setNovoCritDesc('');
-            setAddCriterioEm(null);
-        } catch (error) {
-            Swal.fire('Erro', 'Erro ao adicionar critério.', 'error');
-            console.error(error);
-        }
+        // Rota POST para adicionar o critério ao Template
+        await api.post('/api/gestao/criterios', payload);
+        
+        Swal.fire('Sucesso!', 'Critério adicionado.', 'success');
+        
+        setNovoCrit(null); // Limpa o formulário de novo critério
+        onEstruturaChange(); // [CRÍTICO] Força a recarga completa para atualizar a lista
+        
+    } catch (error: any) {
+        Swal.fire('Erro', error.response?.data || 'Falha ao adicionar critério.', 'error');
+    } finally {
+        setLoading(false);
     }
+  };
+  
+  const handleDeleteCriterio = async (critId: number, critDesc: string) => {
+    const result = await Swal.fire({
+      title: 'Excluir Critério?',
+      text: `Tem certeza que deseja excluir o critério: "${critDesc}"? Avaliações vinculadas a ele serão perdidas.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sim, excluir'
+    });
 
+    if (result.isConfirmed) {
+      setLoading(true);
+      try {
+        await api.delete(`/criterios/${critId}`);
+        Swal.fire('Excluído!', 'Critério removido com sucesso.', 'success');
+        onEstruturaChange(); // [CRÍTICO] Força a recarga completa para atualizar a lista
+      } catch (error) {
+        Swal.fire('Erro', 'Não foi possível excluir o critério.', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+  
+  const handleToggleNovoCrit = (capId: number | null, tipoInicial: TipoCriterio = 'CRITICO') => {
+    if (capId === null) {
+        setNovoCrit(null);
+    } else {
+        setNovoCrit({ id: `new-${Date.now()}`, descricao: '', tipo: tipoInicial, capacidadeId: capId });
+    }
+  };
+
+  // --- Renderização ---
+
+  if (capacidades.length === 0) {
     return (
-        <div className="space-y-8">
-
-            {/* Formulário de Nova Capacidade */}
-            <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
-                <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center gap-2">
-                    <Plus size={20} /> Adicionar Nova Capacidade
-                </h3>
-                <div className="flex gap-4 items-end">
-                    <div className="flex-1">
-                        <label className="text-sm text-blue-700">Descrição da Capacidade</label>
-                        <input
-                            value={novaCapDesc}
-                            onChange={e => setNovaCapDesc(e.target.value)}
-                            className="w-full p-2 border rounded mt-1 bg-white"
-                            placeholder="Ex: Identificar a sequência lógica..."
-                        />
-                    </div>
-                    <div className="w-48">
-                        <label className="text-sm text-blue-700">Tipo</label>
-                        <select
-                            value={novaCapTipo}
-                            onChange={e => setNovaCapTipo(e.target.value as TipoCapacidade)}
-                            className="w-full p-2 border rounded mt-1 bg-white"
-                        >
-                            <option value="TECNICA">Técnica</option>
-                            <option value="SOCIOEMOCIONAL">Socioemocional</option>
-                        </select>
-                    </div>
-                    <button
-                        onClick={adicionarCapacidade}
-                        disabled={loading}
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 h-10 font-medium"
-                    >
-                        Adicionar
-                    </button>
-                </div>
-            </div>
-
-            {/* Lista de Capacidades Existentes */}
-            <div className="space-y-6">
-                {capacidades.map(cap => (
-                    <div key={cap.id} className="bg-white border rounded-lg shadow-sm overflow-hidden">
-                        {/* Cabeçalho da Capacidade */}
-                        <div className="bg-gray-50 p-4 border-b flex justify-between items-start">
-                            <div>
-                                <span className={`text-xs font-bold px-2 py-1 rounded uppercase mb-2 inline-block ${cap.tipo === 'TECNICA' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'
-                                    }`}>
-                                    {cap.tipo}
-                                </span>
-                                <p className="text-lg font-medium text-gray-800">{cap.descricao}</p>
-                            </div>
-                            <button className="text-red-400 hover:text-red-600" title="Excluir Capacidade">
-                                <Trash2 size={18} />
-                            </button>
-                        </div>
-
-                        {/* Lista de Critérios */}
-                        <div className="p-4 bg-white">
-                            <h4 className="text-sm font-bold text-gray-500 uppercase mb-3">Critérios de Avaliação</h4>
-
-                            <ul className="space-y-2 mb-4">
-                                {cap.criterios && cap.criterios.length > 0 ? (
-                                    cap.criterios.map(crit => (
-                                        <li key={crit.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded border border-transparent hover:border-gray-100">
-                                            {crit.tipo === 'CRITICO' ? (
-                                                <div title="Crítico" className="shrink-0 cursor-help">
-                                                    <AlertCircle size={18} className="text-red-500" />
-                                                </div>
-                                            ) : (
-                                                <div title="Desejável" className="shrink-0 cursor-help">
-                                                    <CheckCircle size={18} className="text-gray-400" />
-                                                </div>
-                                            )}
-                                            <span className={`flex-1 text-sm ${crit.tipo === 'CRITICO' ? 'text-red-700 font-medium' : 'text-gray-600'}`}>
-                                                {crit.descricao}
-                                            </span>
-                                            <span className="text-xs text-gray-400 border px-1 rounded">{crit.tipo}</span>
-                                        </li>
-                                    ))
-                                ) : (
-                                    <p className="text-sm text-gray-400 italic">Nenhum critério cadastrado ainda.</p>
-                                )}
-                            </ul>
-
-                            {/* BARRA DE BOTÕES DE AÇÃO */}
-                            {addCriterioEm !== cap.id && importandoEm !== cap.id ? (
-                                <div className="flex gap-4 mt-2 pt-2 border-t border-gray-100">
-                                    <button
-                                        onClick={() => setAddCriterioEm(cap.id)}
-                                        className="text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded flex items-center gap-1 transition"
-                                    >
-                                        <Plus size={16} /> Novo Critério
-                                    </button>
-
-                                    <button
-                                        onClick={() => setImportandoEm(cap.id)}
-                                        className="text-sm text-green-600 hover:text-green-800 hover:bg-green-50 px-2 py-1 rounded flex items-center gap-1 transition"
-                                    >
-                                        <UploadCloud size={16} /> Importar Lista
-                                    </button>
-                                </div>
-                            ) : null}
-
-                            {/* Formulário Manual */}
-                            {addCriterioEm === cap.id && (
-                                <div className="bg-gray-50 p-3 rounded border border-gray-200 mt-2 animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex gap-2 mb-2">
-                                        <input
-                                            placeholder="Descrição do critério..."
-                                            className="flex-1 text-sm p-2 border rounded"
-                                            value={novoCritDesc}
-                                            onChange={e => setNovoCritDesc(e.target.value)}
-                                            autoFocus
-                                        />
-                                        <select
-                                            className="text-sm p-2 border rounded w-32"
-                                            value={novoCritTipo}
-                                            onChange={e => setNovoCritTipo(e.target.value as TipoCriterio)}
-                                        >
-                                            <option value="CRITICO">Crítico</option>
-                                            <option value="DESEJAVEL">Desejável</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => adicionarCriterio(cap.id)}
-                                            className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-                                        >
-                                            Salvar Critério
-                                        </button>
-                                        <button
-                                            onClick={() => setAddCriterioEm(null)}
-                                            className="text-xs text-gray-500 px-3 py-1 hover:text-gray-700"
-                                        >
-                                            Cancelar
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Formulário de Importação (NOVO) */}
-                            {importandoEm === cap.id && (
-                                <ImportadorCriterios
-                                    capacidadeId={cap.id}
-                                    onCancel={() => setImportandoEm(null)}
-                                    onSuccess={() => {
-                                        // Recarrega a página para atualizar os dados
-                                        window.location.reload();
-                                    }}
-                                />
-                            )}
-                        </div>
-                    </div>
-                ))}
-
-                {capacidades.length === 0 && (
-                    <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-500">
-                        Nenhuma capacidade cadastrada para esta disciplina.
-                    </div>
-                )}
-            </div>
+        <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed text-gray-500">
+            <AlertTriangle size={32} className="mx-auto mb-2"/>
+            <p>Nenhuma Capacidade cadastrada. Importe uma planilha ou adicione manualmente.</p>
         </div>
     );
+  }
+
+  return (
+    <div className="space-y-4 mt-6">
+      <h2 className="text-2xl font-bold text-gray-700">Estrutura de Avaliação (Template)</h2>
+      <p className="text-gray-500 text-sm mb-4">Esta estrutura é o **Template** que será copiado para turmas novas.</p>
+
+      {capacidades.map(cap => (
+        <div key={cap.id} className="bg-white border border-gray-200 rounded-lg shadow-sm">
+          {/* Cabeçalho da Capacidade */}
+          <div 
+            className={`p-4 flex justify-between items-center cursor-pointer ${cap.tipo === 'SOCIOEMOCIONAL' ? 'bg-orange-50 hover:bg-orange-100' : 'bg-indigo-50 hover:bg-indigo-100'}`}
+            onClick={() => toggleExpand(cap.id)}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-gray-600">
+                {expandedCapacities.has(cap.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </span>
+              <h3 className="font-bold text-gray-800">
+                {cap.descricao}
+              </h3>
+            </div>
+            
+            <div className="flex items-center gap-3">
+                <span className={`px-3 py-1 text-xs font-bold rounded-full ${cap.tipo === 'SOCIOEMOCIONAL' ? 'bg-orange-200 text-orange-800' : 'bg-indigo-200 text-indigo-800'}`}>
+                    {cap.tipo}
+                </span>
+                <button 
+                    onClick={(e) => { e.stopPropagation(); handleToggleNovoCrit(cap.id); }} 
+                    className="p-1 bg-white rounded-full text-blue-600 hover:text-blue-800"
+                    title="Adicionar Critério"
+                >
+                    <Plus size={18} />
+                </button>
+            </div>
+          </div>
+          
+          {/* Conteúdo (Critérios) */}
+          {expandedCapacities.has(cap.id) && (
+            <div className="p-4 border-t bg-gray-50 space-y-3">
+              <h4 className="text-sm font-bold text-gray-700 mb-3">Critérios Vinculados ({cap.criterios?.length || 0})</h4>
+              
+              {/* Lista de Critérios */}
+              {cap.criterios?.length ? (
+                cap.criterios.map(crit => (
+                  <div key={crit.id} className="flex justify-between items-center p-3 border rounded bg-white shadow-sm hover:border-blue-300">
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-800">{crit.descricao}</p>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${crit.tipo === 'CRITICO' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                        {crit.tipo}
+                      </span>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteCriterio(crit.id, crit.descricao)}
+                      className="text-red-500 hover:text-red-700 p-1 ml-4"
+                      disabled={loading}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-gray-500 italic">Nenhum critério cadastrado para esta capacidade.</p>
+              )}
+
+              {/* Formulário Novo Critério */}
+              {novoCrit?.capacidadeId === cap.id && (
+                  <div className="mt-4 p-4 border-t border-gray-200 bg-white rounded-lg shadow-inner flex flex-col gap-2">
+                      <h5 className="font-semibold text-gray-700">Novo Critério Manual</h5>
+                      <input
+                          type="text"
+                          value={novoCrit.descricao}
+                          onChange={e => setNovoCrit({...novoCrit, descricao: e.target.value})}
+                          placeholder="Descrição do novo critério..."
+                          className="w-full p-2 border rounded text-sm"
+                          disabled={loading}
+                      />
+                      <div className="flex justify-between items-center">
+                          <select
+                              value={novoCrit.tipo}
+                              onChange={e => setNovoCrit({...novoCrit, tipo: e.target.value as TipoCriterio})}
+                              className="p-2 border rounded text-sm"
+                              disabled={loading}
+                          >
+                              <option value="CRITICO">CRÍTICO</option>
+                              <option value="DESEJAVEL">DESEJÁVEL</option>
+                          </select>
+                          <div className="flex gap-2">
+                            <button 
+                                type="button"
+                                onClick={() => handleToggleNovoCrit(null)}
+                                className="text-gray-500 hover:text-gray-700 text-sm"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleCreateCriterio(cap.id)}
+                                disabled={loading || novoCrit.descricao.trim() === ""}
+                                className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {loading ? <Loader2 size={16} className="animate-spin"/> : <Plus size={16}/>} Adicionar
+                            </button>
+                          </div>
+                      </div>
+                  </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }

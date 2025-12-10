@@ -1,106 +1,99 @@
 'use client';
 
 import { useState } from 'react';
-import { UploadCloud, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
+import { UploadCloud, X, Loader2 } from 'lucide-react';
 import api from '@/app/services/api';
-import { useRouter } from 'next/navigation';
+import Swal from 'sweetalert2';
 
+// [CORRIGIDO] Interface de Props definida para resolver o erro de tipagem no page.tsx
 interface Props {
-  turmaId: number;
+    turmaId: number;
+    onClose: () => void;
+    onSuccess: () => Promise<void>;
 }
 
-export default function ImportadorAlunos({ turmaId }: Props) {
-  const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+export default function ImportadorAlunos({ turmaId, onClose, onSuccess }: Props) {
+    const [file, setFile] = useState<File | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
 
-  async function handleUpload() {
-    if (!file) return;
-    setLoading(true);
-    setMessage(null);
+    async function handleUpload() {
+        if (!file) return;
+        setLoading(true);
+        setMessage(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('turmaId', turmaId.toString());
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('turmaId', turmaId.toString());
 
-    try {
-      // Endpoint mapeado no seu ArquivoController.java
-      const res = await api.post('/arquivos/importar-alunos', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+        try {
+            const res = await api.post('/arquivos/importar-alunos', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
 
-      // Sucesso
-      setMessage({ text: res.data || 'Importação concluída com sucesso!', type: 'success' });
-      setFile(null);
-      router.refresh(); // Atualiza a lista de alunos na página pai
-
-    } catch (error: any) {
-      console.error("Erro no upload:", error);
-
-      // --- CORREÇÃO DO ERRO DE OBJETO ---
-      const errorData = error.response?.data;
-      let msg = 'Erro ao importar arquivo.';
-
-      // Verifica se o erro veio como string simples
-      if (typeof errorData === 'string') {
-        msg = errorData;
-      } 
-      // Verifica se é um objeto Spring Boot com campo 'message'
-      else if (errorData?.message) {
-        msg = errorData.message;
-      } 
-      // Verifica se é um objeto com campo 'error'
-      else if (errorData?.error) {
-        msg = errorData.error;
-      }
-
-      setMessage({ text: msg, type: 'error' });
-    } finally {
-      setLoading(false);
+            setMessage({ text: res.data, type: 'success' });
+            setFile(null);
+            await onSuccess(); // Chamada para atualizar a lista de alunos
+        } catch (error: any) {
+            console.error(error);
+            const errorData = error.response?.data;
+            let msg = 'Erro ao importar. Verifique se o arquivo PDF é válido e contém a matrícula e nome.';
+            if (typeof errorData === 'string') msg = errorData;
+            else if (errorData?.message) msg = errorData.message;
+            setMessage({ text: msg, type: 'error' });
+        } finally {
+            setLoading(false);
+        }
     }
-  }
 
-  return (
-    <div className="bg-blue-50 border border-blue-100 rounded-lg p-6 mb-8">
-      <h3 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
-        <UploadCloud size={20} /> Importar Alunos via PDF
-      </h3>
-      <p className="text-sm text-blue-700 mb-4">
-        Faça upload da lista de chamada (PDF) para cadastrar os alunos automaticamente nesta turma.
-      </p>
+    return (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95">
+                <div className="flex justify-between items-start">
+                    <h3 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <UploadCloud size={24} className="text-blue-600"/> Importar Alunos
+                    </h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
+                </div>
+                
+                <div className="border-t border-gray-100 pt-4 mt-4">
+                    <p className="text-sm text-gray-500 mb-6">
+                        Suba um arquivo PDF de listagem de alunos (Ex: Lista de chamada). O sistema tentará extrair a matrícula e o nome.
+                    </p>
 
-      <div className="flex items-center gap-4">
-        <label className="flex-1 cursor-pointer">
-          <div className={`border-2 border-dashed rounded-md p-3 flex items-center justify-center gap-2 transition ${file ? 'border-green-400 bg-green-50 text-green-700' : 'border-blue-300 hover:bg-blue-100 text-blue-500'}`}>
-            <FileText size={20} />
-            <span className="text-sm font-medium truncate">
-              {file ? file.name : 'Clique para selecionar o PDF'}
-            </span>
-            <input 
-              type="file" 
-              accept="application/pdf" 
-              className="hidden" 
-              onChange={(e) => setFile(e.target.files?.[0] || null)} 
-            />
-          </div>
-        </label>
-        
-        <button 
-          onClick={handleUpload} 
-          disabled={!file || loading}
-          className="bg-blue-600 text-white px-6 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          {loading ? 'Processando...' : 'Enviar'}
-        </button>
-      </div>
+                    <div className="flex flex-col items-center gap-4">
+                        <label className="cursor-pointer w-full">
+                        <div className={`px-6 py-3 rounded-md border flex items-center justify-center gap-2 transition ${file ? 'bg-green-50 border-green-300 text-green-700' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}`}>
+                            <UploadCloud size={20} />
+                            <span className="font-medium truncate">{file ? file.name : 'Selecionar Arquivo PDF'}</span>
+                            <input 
+                                type="file" 
+                                accept="application/pdf" 
+                                className="hidden" 
+                                onChange={(e) => setFile(e.target.files?.[0] || null)} 
+                                disabled={loading}
+                            />
+                        </div>
+                        </label>
+                        
+                        {file && (
+                            <button 
+                            onClick={handleUpload} 
+                            disabled={loading}
+                            className="w-full bg-blue-600 text-white px-8 py-2 rounded-md font-bold hover:bg-blue-700 disabled:opacity-50 transition shadow-sm"
+                            >
+                            {loading ? <Loader2 size={20} className="animate-spin mx-auto"/> : 'Iniciar Importação'}
+                            </button>
+                        )}
+                    </div>
+                </div>
 
-      {message && (
-        <div className={`mt-4 p-3 rounded text-sm flex items-center gap-2 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {message.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-          {message.text}
+                {message && (
+                    <div className={`mt-4 p-3 rounded text-sm inline-flex items-center gap-2 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {message.text}
+                    </div>
+                )}
+            </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }

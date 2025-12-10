@@ -25,8 +25,9 @@ public class NivelAvaliacao {
     @Column(nullable = false)
     private Integer minDesejaveis;
 
+    // [ALTERADO] Liga-se ao EstruturaDisciplina (o Snapshot) ao invés de Disciplina
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "disciplina_id", nullable = false)
-    private Disciplina disciplina;
+    @JoinColumn(name = "estrutura_disciplina_id", nullable = false)
+    private EstruturaDisciplina estruturaDisciplina;
 }

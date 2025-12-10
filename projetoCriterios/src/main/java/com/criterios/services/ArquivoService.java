@@ -36,15 +36,26 @@ public class ArquivoService {
     private final DisciplinaRepository disciplinaRepository;
     private final CapacidadeRepository capacidadeRepository;
     private final CriterioRepository criterioRepository;
+    private final EstruturaDisciplinaRepository estruturaDisciplinaRepository; // Adicionado
 
     // --- 1. GERAÇÃO DE EXCEL (Boletim) ---
-    public byte[] gerarBoletimExcel(Long alunoId, Long disciplinaId) throws IOException {
+    public byte[] gerarBoletimExcel(Long alunoId, Long estruturaDisciplinaId) throws IOException { // CORRIGIDO: Recebe EstruturaDisciplinaId
         Aluno aluno = alunoRepository.findById(alunoId).orElseThrow(() -> new RuntimeException("Aluno não encontrado"));
-        Disciplina disciplina = disciplinaRepository.findById(disciplinaId).orElseThrow(() -> new RuntimeException("Disciplina não encontrada"));
-        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId);
+        
+        // [AJUSTE VERSIONAMENTO] Busca o Snapshot da Estrutura para pegar os metadados (Nome/Sigla)
+        EstruturaDisciplina estrutura = estruturaDisciplinaRepository.findById(estruturaDisciplinaId)
+            .orElseThrow(() -> new RuntimeException("Estrutura da Disciplina (Snapshot) não encontrada."));
+        
+        // [CORRIGIDO] Usa o novo método de busca por Snapshot
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, estruturaDisciplinaId);
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            String safeName = (aluno.getNome() + "_" + disciplina.getSigla()).replaceAll("[^a-zA-Z0-9]", "_");
+            
+            // Usa metadados do Snapshot
+            String nomeDisciplina = estrutura.getNomeDisciplina() != null ? estrutura.getNomeDisciplina() : "N/A";
+            String siglaDisciplina = estrutura.getSiglaDisciplina() != null ? estrutura.getSiglaDisciplina() : "N_A";
+
+            String safeName = (aluno.getNome() + "_" + siglaDisciplina).replaceAll("[^a-zA-Z0-9]", "_");
             if (safeName.length() > 30) safeName = safeName.substring(0, 30);
             
             Sheet sheet = workbook.createSheet(safeName);
@@ -56,7 +67,7 @@ public class ArquivoService {
 
             Row titleRow = sheet.createRow(0);
             Cell titleCell = titleRow.createCell(0);
-            titleCell.setCellValue("Boletim: " + aluno.getNome() + " - Disciplina: " + disciplina.getNome());
+            titleCell.setCellValue("Boletim: " + aluno.getNome() + " - Disciplina: " + nomeDisciplina);
             titleCell.setCellStyle(headerStyle);
 
             Row headerRow = sheet.createRow(2);
@@ -173,7 +184,6 @@ public class ArquivoService {
                     }
                 }
 
-                // O método salvarCriterioSeNaoExistir aqui ainda é necessário
                 if (salvarCriterioSeNaoExistir(descricao, tipo, capacidade)) {
                     count++;
                 }
@@ -216,7 +226,6 @@ public class ArquivoService {
                 if (line.trim().isEmpty()) continue;
 
                 // Regex para splitar CSV ignorando vírgulas dentro de aspas
-                // O arquivo Pasta4_novo.csv parece usar vírgula como delimitador
                 String[] columns = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
 
                 String colCapacidade = (columns.length > 0) ? columns[0].replace("\"", "").trim() : "";
@@ -296,7 +305,6 @@ public class ArquivoService {
     
     // --- Métodos Auxiliares de Salvar (Mantidos) ---
     private boolean salvarCriterioSeNaoExistir(String descricao, TipoCriterio tipo, Capacidade capacidade) {
-        // ... (Mantido Inalterado, mas precisa da implementação de body do arquivo)
         boolean existe = false;
         
         if (capacidade.getCriterios() != null) {

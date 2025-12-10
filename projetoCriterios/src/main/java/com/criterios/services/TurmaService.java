@@ -3,6 +3,7 @@ package com.criterios.services;
 import com.criterios.dto.TurmaDTO;
 import com.criterios.dto.TurmaResponseDTO;
 import com.criterios.dto.UsuarioResponseDTO;
+import com.criterios.entities.EstruturaDisciplina;
 import com.criterios.entities.TipoUsuario;
 import com.criterios.entities.Turma;
 import com.criterios.entities.Usuario;
@@ -24,6 +25,9 @@ public class TurmaService {
     @Autowired
     private UsuarioRepository usuarioRepository;
     
+    @Autowired
+    private EstruturaService estruturaService; // NOVO: Serviço de Snapshot
+
     // --- Mapper (Entity -> DTO) ---
     public static TurmaResponseDTO toResponseDTO(Turma turma) {
         // 1. Mapeia a lista de professores para DTOs
@@ -45,7 +49,15 @@ public class TurmaService {
         dto.setAnoSemestre(turma.getAnoSemestre());
         dto.setTermoAtual(turma.getTermoAtual());
         dto.setProfessores(professoresDTO);
-        dto.setTotalAlunos(turma.getAlunos() != null ? turma.getAlunos().size() : 0); 
+        dto.setTotalAlunos(turma.getAlunos() != null ? turma.getAlunos().size() : 0);
+        
+        // [NOVO] Adiciona o ID da Estrutura (Disciplina) para uso no front-end
+        if (turma.getEstruturaDisciplina() != null) {
+             dto.setDisciplinaId(turma.getEstruturaDisciplina().getDisciplinaTemplateId());
+             // [CORREÇÃO] Adiciona o ID do Snapshot para ser usado no front-end
+             dto.setEstruturaSnapshotId(turma.getEstruturaDisciplina().getId()); 
+             dto.setNomeDisciplina(turma.getEstruturaDisciplina().getNomeDisciplina());
+        }
         
         return dto;
     }
@@ -68,13 +80,21 @@ public class TurmaService {
         if (professores.size() != dto.getProfessoresIds().size()) {
             throw new RuntimeException("Um ou mais professores informados não existem.");
         }
-
-        // 3. Cria a turma
+        
+        // 3. [NOVO] CRIA O SNAPSHOT DA DISCIPLINA (TEMPLATE)
+        if (dto.getDisciplinaTemplateId() == null) {
+            throw new RuntimeException("O ID da disciplina é obrigatório para criar a turma.");
+        }
+        // Cria a EstruturaDisciplina e copia Capacidades/Critérios/Níveis para o Snapshot
+        EstruturaDisciplina estruturaSnapshot = estruturaService.criarSnapshotEstrutura(dto.getDisciplinaTemplateId());
+        
+        // 4. Cria a turma
         Turma turma = new Turma();
         turma.setNome(dto.getNome());
         turma.setAnoSemestre(dto.getAnoSemestre());
         turma.setTermoAtual(dto.getTermoAtual());
         turma.setProfessores(professores);
+        turma.setEstruturaDisciplina(estruturaSnapshot);
 
         return turmaRepository.save(turma);
     }
@@ -96,12 +116,13 @@ public class TurmaService {
             }
             turma.setProfessores(professores);
         }
-
+        
         // 2. Atualiza dados básicos
         turma.setNome(dto.getNome());
         turma.setAnoSemestre(dto.getAnoSemestre());
         turma.setTermoAtual(dto.getTermoAtual());
         
+        // [IGNORADO] O link para a EstruturaDisciplina (Snapshot) não é alterado após a criação da turma.
 
         return turmaRepository.save(turma);
     }

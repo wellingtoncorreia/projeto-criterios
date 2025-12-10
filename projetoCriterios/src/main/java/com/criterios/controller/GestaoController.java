@@ -27,9 +27,9 @@ public class GestaoController {
     }
 
     @GetMapping("/disciplinas/{disciplinaId}/validar")
-    public ResponseEntity<String> validarDisciplina(@PathVariable Long disciplinaId) {
+    public ResponseEntity<String> validarDisciplina(@PathVariable("disciplinaId") Long disciplinaTemplateId) {
         try {
-            gestaoService.validarRegraMinimoCritico(disciplinaId);
+            gestaoService.validarRegraMinimoCritico(disciplinaTemplateId);
             return ResponseEntity.ok("Disciplina válida. Todas as capacidades possuem critérios críticos.");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -37,23 +37,23 @@ public class GestaoController {
     }
     
     @GetMapping("/disciplinas/{disciplinaId}/capacidades")
-    public ResponseEntity<List<Capacidade>> listarCapacidades(@PathVariable Long disciplinaId) {
-        return ResponseEntity.ok(capacidadeRepository.findByDisciplinaId(disciplinaId));
+    // [CORRIGIDO] Usa findByDisciplinaTemplateId
+    public ResponseEntity<List<Capacidade>> listarCapacidades(@PathVariable("disciplinaId") Long disciplinaTemplateId) {
+        return ResponseEntity.ok(capacidadeRepository.findByDisciplinaTemplateId(disciplinaTemplateId));
     }
 
     @PostMapping("/disciplinas/{disciplinaId}/importar-lote")
     public ResponseEntity<String> importarLote(
-            @PathVariable Long disciplinaId,
+            @PathVariable("disciplinaId") Long disciplinaTemplateId,
             @RequestBody List<CapacidadeImportDTO> dados) {
-        gestaoService.salvarImportacaoEmMassa(disciplinaId, dados);
+        gestaoService.salvarImportacaoEmMassa(disciplinaTemplateId, dados);
         return ResponseEntity.ok("Importação realizada com sucesso!");
     }
 
-    // [NOVO] Endpoint para gerar níveis
     @PostMapping("/disciplinas/{disciplinaId}/gerar-niveis")
-    public ResponseEntity<String> gerarNiveis(@PathVariable Long disciplinaId) {
+    public ResponseEntity<String> gerarNiveis(@PathVariable("disciplinaId") Long disciplinaTemplateId) {
         try {
-            gestaoService.gerarNiveisAutomaticos(disciplinaId);
+            gestaoService.gerarNiveisAutomaticos(disciplinaTemplateId);
             return ResponseEntity.ok("Níveis gerados com sucesso!");
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Erro ao gerar níveis: " + e.getMessage());

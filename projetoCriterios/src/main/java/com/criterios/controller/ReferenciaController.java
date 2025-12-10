@@ -7,10 +7,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import com.criterios.dto.TurmaDTO; 
-import com.criterios.dto.TurmaResponseDTO; // [IMPORTANTE]
+import com.criterios.dto.TurmaResponseDTO;
 import com.criterios.entities.*;
 import com.criterios.repository.*;
-import com.criterios.services.TurmaService; // [IMPORTANTE]
+import com.criterios.services.TurmaService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -56,26 +56,28 @@ public class ReferenciaController {
         return ResponseEntity.noContent().build();
     }
 
-    // --- ESTRUTURA ---
+    // --- ESTRUTURA (Template) ---
 
     @GetMapping("/disciplinas/{disciplinaId}/capacidades")
-    public ResponseEntity<List<Capacidade>> listarCapacidadesPorDisciplina(@PathVariable Long disciplinaId) {
-        return ResponseEntity.ok(capacidadeRepository.findByDisciplinaId(disciplinaId));
+    // [CORRIGIDO] Usa findByDisciplinaTemplateId
+    public ResponseEntity<List<Capacidade>> listarCapacidadesPorDisciplina(@PathVariable("disciplinaId") Long disciplinaTemplateId) {
+        return ResponseEntity.ok(capacidadeRepository.findByDisciplinaTemplateId(disciplinaTemplateId));
     }
 
     @GetMapping("/disciplinas/{disciplinaId}/criterios")
-    public ResponseEntity<List<Criterio>> listarCriteriosPorDisciplina(@PathVariable Long disciplinaId) {
-        return ResponseEntity.ok(criterioRepository.findByDisciplinaId(disciplinaId));
+    // [CORRIGIDO] Usa findByDisciplinaTemplateId
+    public ResponseEntity<List<Criterio>> listarCriteriosPorDisciplina(@PathVariable("disciplinaId") Long disciplinaTemplateId) {
+        return ResponseEntity.ok(criterioRepository.findByDisciplinaTemplateId(disciplinaTemplateId));
     }
 
     @GetMapping("/disciplinas/{disciplinaId}/niveis")
-    public ResponseEntity<List<NivelAvaliacao>> listarNiveis(@PathVariable Long disciplinaId) {
-        return ResponseEntity.ok(nivelRepository.findByDisciplinaIdOrderByNivelDesc(disciplinaId));
+    // [CORRIGIDO] Usa findByDisciplinaTemplateId
+    public ResponseEntity<List<NivelAvaliacao>> listarNiveis(@PathVariable("disciplinaId") Long disciplinaTemplateId) {
+        return ResponseEntity.ok(nivelRepository.findByDisciplinaTemplateId(disciplinaTemplateId));
     }
 
-    // --- TURMA (LÓGICA NOVA COM SERVICE) ---
+    // --- TURMA ---
 
-    // [CORRIGIDO] Retorna DTOs de Turma (Lista)
     @GetMapping("/turmas")
     public ResponseEntity<List<TurmaResponseDTO>> listarTurmas() {
         String emailLogado = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -85,40 +87,26 @@ public class ReferenciaController {
         return ResponseEntity.ok(turmaService.listarTurmasPorUsuario(usuario));
     }
     
-    // [CORRIGIDO] Criação de Turma
     @PostMapping("/turmas")
     public ResponseEntity<?> criarTurma(@RequestBody TurmaDTO dto) {
         try {
             Turma turma = turmaService.criarTurma(dto);
-            // Retorna o DTO da turma criada para o frontend
             return ResponseEntity.ok(TurmaService.toResponseDTO(turma));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // [CORRIGIDO] Atualização de Turma
     @PutMapping("/turmas/{id}")
     public ResponseEntity<?> atualizarTurma(@PathVariable Long id, @RequestBody TurmaDTO dto) {
         try {
             Turma turma = turmaService.atualizarTurma(id, dto);
-            // Retorna o DTO da turma atualizada
             return ResponseEntity.ok(TurmaService.toResponseDTO(turma));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // [CORRIGIDO] Busca de Turma por ID
-    @GetMapping("/turmas/{id}")
-    public ResponseEntity<TurmaResponseDTO> buscarTurma(@PathVariable Long id) {
-        return turmaRepository.findById(id)
-                .map(TurmaService::toResponseDTO) // Mapeia o resultado encontrado para DTO
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    // [NOVO] Exclusão de Turma por ID (com remoção em cascata garantida pelo entity)
     @DeleteMapping("/turmas/{id}")
     public ResponseEntity<Void> deletarTurma(@PathVariable Long id) {
         if (!turmaRepository.existsById(id)) {
@@ -128,6 +116,14 @@ public class ReferenciaController {
         return ResponseEntity.noContent().build();
     }
     
+    @GetMapping("/turmas/{id}")
+    public ResponseEntity<TurmaResponseDTO> buscarTurma(@PathVariable Long id) {
+        return turmaRepository.findById(id)
+                .map(TurmaService::toResponseDTO)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/turmas/{turmaId}/disciplinas")
     public ResponseEntity<List<Disciplina>> listarDisciplinasPorTurma(@PathVariable Long turmaId) {
         return turmaRepository.findById(turmaId)
@@ -148,9 +144,18 @@ public class ReferenciaController {
     
     @PostMapping("/capacidades")
     public ResponseEntity<Capacidade> criarCapacidade(@RequestBody Capacidade capacidade) {
-        if(capacidade.getDisciplina() == null || capacidade.getDisciplina().getId() == null) {
+        // O ID da EstruturaDisciplina (Template) deve ser fornecido
+        if(capacidade.getEstruturaDisciplina() == null || capacidade.getEstruturaDisciplina().getId() == null) {
             return ResponseEntity.badRequest().build();
         }
         return ResponseEntity.ok(capacidadeRepository.save(capacidade));
+    }
+    
+    // --- ESTRUTURA (Snapshot) ---
+    
+    @GetMapping("/estrutura/{estruturaId}/capacidades") // <-- NOVO ENDPOINT
+    public ResponseEntity<List<Capacidade>> listarCapacidadesPorEstrutura(@PathVariable("estruturaId") Long estruturaDisciplinaId) {
+        // Usa o repositório para buscar capacidades pelo ID do Snapshot (EstruturaDisciplina)
+        return ResponseEntity.ok(capacidadeRepository.findByEstruturaDisciplinaId(estruturaDisciplinaId)); 
     }
 }

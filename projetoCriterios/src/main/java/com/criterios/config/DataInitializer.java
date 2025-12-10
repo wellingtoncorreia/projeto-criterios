@@ -20,6 +20,9 @@ public class DataInitializer implements CommandLineRunner {
     // Dependências de Usuário e Segurança
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    
+    // [ADICIONADO] Repositório necessário para persistir o Template
+    private final EstruturaDisciplinaRepository estruturaDisciplinaRepository;
 
     @Override
     @Transactional
@@ -44,31 +47,44 @@ public class DataInitializer implements CommandLineRunner {
         if (disciplinaRepository.count() == 0) {
             System.out.println(":: INICIANDO SEED DE DADOS ACADÊMICOS ::");
 
-            // --- 1. CRIAR DISCIPLINA ---
+            // --- 1. CRIAR DISCIPLINA (Template) ---
             Disciplina disciplina = new Disciplina();
             disciplina.setNome("Lógica de Programação e Algoritmos");
             disciplina.setSigla("LPA");
             disciplina.setPeriodicidade(Periodicidade.SEMESTRAL); 
             disciplina.setTermo(1);
             disciplina = disciplinaRepository.save(disciplina);
+            
+            // --- 1.1. CRIAR E SALVAR O TEMPLATE/PLACEHOLDER DA ESTRUTURA ---
+            // Este objeto precisa ser persistido para que o FK funcione.
+            EstruturaDisciplina templatePlaceholder = new EstruturaDisciplina();
+            templatePlaceholder.setDisciplinaTemplateId(disciplina.getId());
+            templatePlaceholder.setNomeDisciplina(disciplina.getNome());
+            templatePlaceholder.setSiglaDisciplina(disciplina.getSigla());
+            
+            // [CORREÇÃO CRÍTICA] Salva a entidade pai primeiro para gerar o ID
+            templatePlaceholder = estruturaDisciplinaRepository.save(templatePlaceholder);
 
             // --- 2. CRIAR CAPACIDADES ---
             
             // Técnica
             Capacidade capTecnica = new Capacidade();
-            capTecnica.setDisciplina(disciplina);
+            // [CORREÇÃO] Agora o objeto templatePlaceholder está gerenciado e tem um ID válido
+            capTecnica.setEstruturaDisciplina(templatePlaceholder);
             capTecnica.setDescricao("Identificar a sequência lógica de passos em um algoritmo");
             capTecnica.setTipo(TipoCapacidade.TECNICA);
             capTecnica = capacidadeRepository.save(capTecnica);
 
             // Socioemocional
             Capacidade capSocial = new Capacidade();
-            capSocial.setDisciplina(disciplina);
+            // [CORREÇÃO] Usa o objeto templatePlaceholder salvo
+            capSocial.setEstruturaDisciplina(templatePlaceholder);
             capSocial.setDescricao("Demonstrar resiliência emocional frente a erros de código");
             capSocial.setTipo(TipoCapacidade.SOCIOEMOCIONAL);
             capSocial = capacidadeRepository.save(capSocial);
 
             // --- 3. CRIAR CRITÉRIOS ---
+            // ... (Critérios aqui permanecem inalterados, pois usam setCapacidade)
 
             // Critérios Técnicos
             Criterio c1 = new Criterio();
@@ -103,7 +119,8 @@ public class DataInitializer implements CommandLineRunner {
 
             for (int nivel = 5; nivel <= 100; nivel += 5) {
                 NivelAvaliacao nivelObj = new NivelAvaliacao();
-                nivelObj.setDisciplina(disciplina);
+                // [CORREÇÃO] Usa o objeto templatePlaceholder salvo
+                nivelObj.setEstruturaDisciplina(templatePlaceholder);
                 nivelObj.setNivel(nivel);
 
                 if (nivel <= 50) {
@@ -119,12 +136,9 @@ public class DataInitializer implements CommandLineRunner {
                     nivelObj.setMinCriticos((int) totalCriticos);
                     
                     if (totalDesejaveis > 0) {
-                        // Calcula quantos degraus de 5% estamos abaixo de 100
                         int degrausAbaixoDe100 = (100 - nivel) / 5;
-                        // Subtrai do total de desejáveis
                         int qtdDesejaveis = (int) totalDesejaveis - degrausAbaixoDe100;
                         
-                        // Não permite negativo
                         if (qtdDesejaveis < 0) qtdDesejaveis = 0;
                         
                         nivelObj.setMinDesejaveis(qtdDesejaveis);

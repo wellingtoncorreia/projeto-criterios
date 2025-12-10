@@ -23,11 +23,6 @@ public class Disciplina {
 
     private Integer termo;
 
-    // [ATUALIZADO] Apaga todas as capacidades (e seus critérios)
-    @OneToMany(mappedBy = "disciplina", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Capacidade> capacidades;
-
-    // [ATUALIZADO] Apaga todos os níveis de avaliação
-    @OneToMany(mappedBy = "disciplina", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<NivelAvaliacao> niveis;
+    // [REMOVIDO] links para Capacidades e Níveis, pois agora eles pertencem à EstruturaDisciplina (Snapshot)
+    // Para manter a tela de gestão (GerenciadorCapacidades), a busca será feita indiretamente
 }

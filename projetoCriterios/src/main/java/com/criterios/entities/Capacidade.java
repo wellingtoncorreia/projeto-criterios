@@ -25,10 +25,11 @@ public class Capacidade {
     @Column(nullable = false)
     private TipoCapacidade tipo;
 
+    // [ALTERADO] Liga-se ao EstruturaDisciplina (o Snapshot) ao invés de Disciplina
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "disciplina_id", nullable = false)
-    private Disciplina disciplina;
+    @JoinColumn(name = "estrutura_disciplina_id", nullable = false)
+    private EstruturaDisciplina estruturaDisciplina;
 
     // [ATUALIZADO] orphanRemoval = true força a exclusão
     @OneToMany(mappedBy = "capacidade", cascade = CascadeType.ALL, orphanRemoval = true)

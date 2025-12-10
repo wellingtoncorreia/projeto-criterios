@@ -7,7 +7,7 @@ import api from '@/app/services/api';
 import Swal from 'sweetalert2';
 import { Disciplina, Capacidade } from '@/app/types';
 import GerenciadorCapacidades from './GerenciadorCapacidades';
-import ImportadorInterativo from '@/app/components/forms/ImportadorIterativo';
+import ImportadorIterativo from '@/app/components/forms/ImportadorIterativo';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -26,25 +26,27 @@ interface CapacidadeParaEdicao {
 }
 
 export default function DetalhesDisciplinaPage({ params }: PageProps) {
-  const { id } = use(params);
+  // O ID da disciplina Template (Template ID)
+  const { id } = use(params); 
   
   const [disciplina, setDisciplina] = useState<Disciplina | null>(null);
   const [capacidades, setCapacidades] = useState<Capacidade[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Novo estado para controlar se o modal está aberto e o modo de operação
   const [showImportador, setShowImportador] = useState(false);
   const [initialData, setInitialData] = useState<CapacidadeParaEdicao[] | null>(null);
   
   const [gerandoNiveis, setGerandoNiveis] = useState(false);
 
+  // Função central de carregamento de dados do servidor
   async function carregarDados() {
     setLoading(true);
     try {
+      // [CORREÇÃO] Chamadas corretas: api.get já usa o prefixo /api
       const [resDisc, resCap] = await Promise.all([
-        api.get(`/disciplinas/${id}`),
-        // O backend retorna a estrutura aninhada, o que é perfeito
-        api.get(`/disciplinas/${id}/capacidades`) 
+        api.get<Disciplina>(`/disciplinas/${id}`),
+        // A rota correta é /disciplinas/{id}/capacidades (sem o /api na frente)
+        api.get<Capacidade[]>(`/disciplinas/${id}/capacidades`) 
       ]);
       setDisciplina(resDisc.data);
       setCapacidades(resCap.data);
@@ -59,13 +61,16 @@ export default function DetalhesDisciplinaPage({ params }: PageProps) {
   // Função para abrir o modal no modo EDIÇÃO
   function handleOpenEditor(mode: 'import' | 'edit') {
     if (mode === 'import') {
-      // Modo Importação: Começa do zero (Passo 1: Upload)
       setInitialData(null);
       setShowImportador(true);
     } else {
       // Modo Edição: Mapeia dados existentes para o formato interno do modal
+      if (capacidades.length === 0) {
+          Swal.fire('Atenção', 'Não há estrutura para editar. Use "Importar Planilha" primeiro.', 'warning');
+          return;
+      }
+        
       const mappedData: CapacidadeParaEdicao[] = capacidades.map(cap => ({
-        // Usamos o ID real aqui, mas o modal tratará como ID de controle
         id: cap.id.toString(), 
         descricao: cap.descricao,
         tipo: cap.tipo,
@@ -169,21 +174,22 @@ export default function DetalhesDisciplinaPage({ params }: PageProps) {
 
       {/* Renderiza o Importador/Editor Interativo como um modal */}
       {showImportador && (
-        <ImportadorInterativo 
+        <ImportadorIterativo 
             disciplinaId={Number(id)}
             initialData={initialData} // Passa os dados existentes para o modo edição
             nomeDisciplina={disciplina.nome} // Passa o nome para o cabeçalho
             onClose={() => setShowImportador(false)}
             onSuccess={() => {
                 setShowImportador(false); 
-                carregarDados();          
+                carregarDados(); // Chama a função de recarregar dados do servidor          
             }}
         />
       )}
 
       <GerenciadorCapacidades 
         disciplinaId={Number(id)} 
-        capacidadesIniciais={capacidades} 
+        capacidadesIniciais={capacidades}
+        onEstruturaChange={carregarDados} // Passa a função de recarregar para o gerenciador
       />
     </div>
   );

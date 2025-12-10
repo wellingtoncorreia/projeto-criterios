@@ -10,6 +10,7 @@ import Swal from 'sweetalert2'; // Importado Swal
 export default function TurmasPage() {
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null); // [NOVO] Estado para o papel do usuário
 
   // Função para recarregar as turmas
   async function carregarTurmas() {
@@ -24,7 +25,11 @@ export default function TurmasPage() {
     }
   }
 
+  // [NOVO] Efeito para carregar o papel do usuário
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+        setUserRole(localStorage.getItem('role'));
+    }
     carregarTurmas();
   }, []);
 
@@ -60,6 +65,9 @@ export default function TurmasPage() {
     }
   }
 
+  // Variável de controle para Gestor
+  const isGestor = userRole === 'GESTOR';
+
   if(loading) return <div className="p-8 text-center text-gray-500">Carregando turmas...</div>;
 
   return (
@@ -69,13 +77,17 @@ export default function TurmasPage() {
             <h1 className="text-3xl font-bold text-gray-800">Gestão de Turmas</h1>
             <p className="text-gray-500">Visualize turmas e seus professores responsáveis.</p>
         </div>
-        <Link 
-          href="/gestao/turmas/nova" 
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm"
-        >
-          <Plus size={20} />
-          Nova Turma
-        </Link>
+        
+        {/* [ALTERADO] Botão de Nova Turma visível APENAS para GESTOR */}
+        {isGestor && (
+            <Link 
+            href="/gestao/turmas/nova" 
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm"
+            >
+            <Plus size={20} />
+            Nova Turma
+            </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -122,28 +134,32 @@ export default function TurmasPage() {
                 </div>
               </div>
               
-              {/* Seção de Ações: Agora com 4 colunas (Editar, Excluir, Alunos, Avaliar) */}
-              <div className="border-t pt-4 mt-2 grid grid-cols-4 gap-2">
+              {/* Seção de Ações: Agora as ações restritas são condicionais */}
+              <div className={`border-t pt-4 mt-2 grid gap-2 ${isGestor ? 'grid-cols-4' : 'grid-cols-2'}`}>
                 
-                {/* Botão de Editar */}
-                <Link 
-                    href={`/gestao/turmas/${t.id}/editar`}
-                    className="flex items-center justify-center gap-1 text-center bg-yellow-50 text-yellow-700 font-semibold py-2 rounded border border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300 transition text-xs"
-                    title="Editar Turma"
-                >
-                    <Edit size={14} /> Editar
-                </Link>
+                {/* Botão de Editar visível APENAS para GESTOR */}
+                {isGestor && (
+                    <Link 
+                        href={`/gestao/turmas/${t.id}/editar`}
+                        className="flex items-center justify-center gap-1 text-center bg-yellow-50 text-yellow-700 font-semibold py-2 rounded border border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300 transition text-xs"
+                        title="Editar Turma"
+                    >
+                        <Edit size={14} /> Editar
+                    </Link>
+                )}
 
-                {/* Botão de Excluir */}
-                <button
-                    onClick={() => handleDelete(t.id, t.nome)}
-                    className="flex items-center justify-center gap-1 text-center bg-red-50 text-red-700 font-semibold py-2 rounded border border-red-200 hover:bg-red-100 hover:border-red-300 transition text-xs"
-                    title="Excluir Turma e Dados"
-                >
-                    <Trash2 size={14} /> Excluir
-                </button>
+                {/* Botão de Excluir visível APENAS para GESTOR */}
+                {isGestor && (
+                    <button
+                        onClick={() => handleDelete(t.id, t.nome)}
+                        className="flex items-center justify-center gap-1 text-center bg-red-50 text-red-700 font-semibold py-2 rounded border border-red-200 hover:bg-red-100 hover:border-red-300 transition text-xs"
+                        title="Excluir Turma e Dados"
+                    >
+                        <Trash2 size={14} /> Excluir
+                    </button>
+                )}
 
-                {/* Link para Alunos */}
+                {/* Link para Alunos (Detalhes da Turma) */}
                 <Link 
                   href={`/gestao/turmas/${t.id}`}
                   className="flex items-center justify-center gap-1 text-center bg-gray-50 text-blue-600 font-semibold py-2 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition text-xs"
@@ -154,7 +170,7 @@ export default function TurmasPage() {
 
                 {/* Link para Avaliação */}
                 <Link 
-                  href={`/gestao/turmas/${t.id}/avaliacao`}
+                  href={`/gestao/turmas/${t.id}/avaliacao?estruturaId=${t.estruturaSnapshotId}`}
                   className="flex items-center justify-center gap-1 text-center bg-green-50 text-green-700 font-semibold py-2 rounded border border-green-200 hover:bg-green-100 hover:border-green-300 transition text-xs"
                   title="Lançar Notas"
                 >

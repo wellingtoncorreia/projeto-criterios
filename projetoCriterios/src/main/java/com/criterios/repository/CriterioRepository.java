@@ -11,14 +11,26 @@ import java.util.List;
 @Repository
 public interface CriterioRepository extends JpaRepository<Criterio, Long> {
     
-    // Busca critérios pelo ID da Capacidade
+    // Busca critérios pelo ID da Capacidade (Snapshot/Template)
     List<Criterio> findByCapacidadeId(Long capacidadeId);
+    
+ // Adicionar este método em CriterioRepository.java:
+    @Query("SELECT COUNT(c) FROM Criterio c JOIN c.capacidade cap WHERE cap.estruturaDisciplina.id = :estruturaDisciplinaId AND c.tipo = :tipo")
+    Long countByEstruturaDisciplinaAndTipo(@Param("estruturaDisciplinaId") Long estruturaDisciplinaId, @Param("tipo") TipoCriterio tipo);
 
-    // Busca critérios pelo ID da Disciplina (navegando pela Capacidade)
-    @Query("SELECT c FROM Criterio c JOIN c.capacidade cap WHERE cap.disciplina.id = :disciplinaId")
-    List<Criterio> findByDisciplinaId(@Param("disciplinaId") Long disciplinaId);
+    // [SNAPSHOT] Busca critérios pelo ID da EstruturaDisciplina (navegando pela Capacidade)
+    @Query("SELECT c FROM Criterio c JOIN c.capacidade cap WHERE cap.estruturaDisciplina.id = :estruturaDisciplinaId")
+    List<Criterio> findByEstruturaDisciplinaId(@Param("estruturaDisciplinaId") Long estruturaDisciplinaId);
 
-    // [NOVO] Conta critérios por tipo na disciplina
-    @Query("SELECT COUNT(c) FROM Criterio c JOIN c.capacidade cap WHERE cap.disciplina.id = :disciplinaId AND c.tipo = :tipo")
-    Long countByDisciplinaAndTipo(@Param("disciplinaId") Long disciplinaId, @Param("tipo") TipoCriterio tipo);
+    // [TEMPLATE] Busca critérios pelo ID da Disciplina TEMPLATE
+    @Query("SELECT c FROM Criterio c JOIN c.capacidade cap WHERE cap.estruturaDisciplina.disciplinaTemplateId = :disciplinaTemplateId")
+    List<Criterio> findByDisciplinaTemplateId(@Param("disciplinaTemplateId") Long disciplinaTemplateId);
+
+    // [TEMPLATE] Conta critérios por tipo na Disciplina TEMPLATE
+    @Query("SELECT COUNT(c) FROM Criterio c JOIN c.capacidade cap WHERE cap.estruturaDisciplina.disciplinaTemplateId = :disciplinaTemplateId AND c.tipo = :tipo")
+    Long countByDisciplinaTemplateIdAndTipo(@Param("disciplinaTemplateId") Long disciplinaTemplateId, @Param("tipo") TipoCriterio tipo);
+    
+    // [TEMPLATE] Método para buscar Critérios de uma Capacidade TEMPLATE (para o EstruturaService)
+    @Query("SELECT c FROM Criterio c WHERE c.capacidade.id = :capacidadeTemplateId")
+    List<Criterio> findByCapacidadeTemplateId(@Param("capacidadeTemplateId") Long capacidadeTemplateId);
 }

@@ -29,10 +29,10 @@ public class Criterio {
     @JoinColumn(name = "capacidade_id", nullable = false)
     private Capacidade capacidade;
     
-    // Método auxiliar para pegar o ID da disciplina através da capacidade
-    public Long getDisciplinaId() {
-        return capacidade != null && capacidade.getDisciplina() != null 
-               ? capacidade.getDisciplina().getId() 
+    // Método auxiliar para pegar o ID da EstruturaDisciplina (o novo "dono")
+    public Long getEstruturaDisciplinaId() {
+        return capacidade != null && capacidade.getEstruturaDisciplina() != null 
+               ? capacidade.getEstruturaDisciplina().getId() 
                : null;
     }
 }

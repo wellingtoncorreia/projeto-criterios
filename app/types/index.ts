@@ -1,105 +1,74 @@
-// Enums baseados nos seus arquivos Java
-export type TipoCapacidade = 'TECNICA' | 'SOCIOEMOCIONAL';
-export type TipoCriterio = 'CRITICO' | 'DESEJAVEL';
+// Tipos de Entidades Base
 
-export type Periodicidade = 'ANUAL' | 'SEMESTRAL';
+export type TipoUsuario = 'GESTOR' | 'PROFESSOR';
+export type TipoCriterio = 'CRITICO' | 'DESEJAVEL';
+export type TipoCapacidade = 'TECNICA' | 'SOCIOEMOCIONAL';
 
 export interface Usuario {
-  id: number;
-  nome: string;
-  email: string;
-  tipo: 'GESTOR' | 'PROFESSOR';
+    id: number;
+    nome: string;
+    email: string;
+    tipo: TipoUsuario;
 }
 
 export interface Disciplina {
-  id: number;
-  nome: string;
-  sigla?: string;
-  periodicidade: Periodicidade;
-  termo: number; // 1, 2, 3, 4
-  capacidades?: Capacidade[];
-  niveis?: NivelAvaliacao[];
+    id: number;
+    nome: string;
+    sigla: string;
+    periodicidade: 'ANUAL' | 'SEMESTRAL';
+    termo: number;
 }
+
+export interface Capacidade {
+    id: number;
+    descricao: string;
+    tipo: TipoCapacidade;
+    // O backend não retorna o objeto disciplina, mas sim o vínculo.
+    // Para edição, precisamos dos critérios aninhados.
+    criterios?: Criterio[]; 
+}
+
+export interface Criterio {
+    id: number;
+    descricao: string;
+    tipo: TipoCriterio;
+    capacidade: Capacidade;
+    // O backend retorna getDisciplinaId(), mas vamos usar a EstruturaDisciplina
+}
+
+export interface Avaliacao {
+    id: number;
+    atendeu: boolean;
+    observacao: string;
+    criterio: Criterio;
+    // ... outros campos
+}
+
+// DTOs
 
 export interface Turma {
-  id: number;
-  nome: string;
-  anoSemestre: string;
-  termoAtual: number;
-  // [ATUALIZADO] Agora é uma lista de professores
-  professores: Usuario[]; 
-  alunos?: Aluno[];
+    id: number;
+    nome: string;
+    anoSemestre: string;
+    termoAtual: number;
+    professores: Usuario[];
+    totalAlunos: number;
+    // [NOVO VERSIONAMENTO] Campos do Snapshot (EstruturaDisciplina)
+    disciplinaId: number; // ID da Disciplina TEMPLATE
+    estruturaSnapshotId: number; // ID da Estrutura Imutável (Snapshot) <-- ADICIONADO
+    nomeDisciplina: string; // Nome da Disciplina TEMPLATE (para exibição)
+     estruturaDisciplina?: {
+    id: number;
+  };
 }
 
-export interface CriarTurmaPayload {
-  nome: string;
-  anoSemestre: string;
-  termoAtual: number;
-  professorIds: number[]; // Lista de IDs (ex: [1, 5])
-}
-
-// Entidade: Capacidade
-export interface Capacidade {
-  id: number;
-  descricao: string;
-  tipo: TipoCapacidade;
-  disciplinaId: number; // Mapeando o ID da relação
-  criterios?: Criterio[];
-}
-
-// Entidade: Critério
-export interface Criterio {
-  id: number;
-  descricao: string;
-  tipo: TipoCriterio;
-  capacidadeId: number;
-}
-
-// Entidade: Nível de Avaliação (Regra de Negócio)
-export interface NivelAvaliacao {
-  id: number;
-  nivel: number;          // 5, 10... 100
-  minCriticos: number;    // Ex: 5
-  minDesejaveis: number;  // Ex: 1
-  disciplinaId: number;
-}
-
-
-// Entidade: Aluno
 export interface Aluno {
-  id: number;
-  nome: string;
-  turmaId: number;
+    id: number;
+    nome: string;
+    turma: Turma;
+    avaliacoes: Avaliacao[];
 }
 
-// Entidade: Avaliação (O registro do 'Atendeu' ou 'Não Atendeu')
-export interface Avaliacao {
-  id: number;
-  atendeu: boolean | null; // Null se ainda não foi avaliado
-  observacao?: string;
-  dataAvaliacao?: string;
-  alunoId: number;
-  criterioId: number;
-  // O backend retorna o objeto Criterio completo em alguns endpoints (fetch EAGER)
-  criterio?: Criterio; 
-}
-
-// DTOs para comunicação com a API (Payloads de envio)
-
-export interface CriarCriterioPayload {
-  capacidadeId: number;
-  descricao: string;
-  tipo: TipoCriterio;
-}
-
-export interface RegistrarAvaliacaoPayload {
-  alunoId: number;
-  criterioId: number;
-  atendeu: boolean;
-  observacao?: string;
-}
-
-// DTO de Resposta do Boletim (ResultadoBoletimDTO.java)
 export interface ResultadoBoletim {
   nomeAluno: string;
   nomeDisciplina: string;

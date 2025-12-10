@@ -15,8 +15,12 @@ public class Turma {
     private String nome;
     private String anoSemestre;
     private Integer termoAtual;
+    
+    // [NOVO] Link para a Estrutura Imutável (Snapshot) da Disciplina
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "estrutura_disciplina_id", nullable = true) // nullable=true por questões de compatibilidade, mas deve ser setado na criação
+    private EstruturaDisciplina estruturaDisciplina;
 
-    // [ALTERADO] Adicionado cascade para apagar alunos junto com a turma
     @OneToMany(mappedBy = "turma", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Aluno> alunos;
 

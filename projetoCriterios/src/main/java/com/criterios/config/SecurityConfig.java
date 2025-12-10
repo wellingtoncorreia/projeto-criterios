@@ -37,8 +37,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(req -> req
                         // Libera TUDO que começa com /api/auth (Login e Register)
                         .requestMatchers("/api/auth/**").permitAll()
+                        
+                        // [CORRIGIDO] Rotas de gestão de estrutura (Importação/Níveis) liberadas para GESTOR e PROFESSOR
+                        .requestMatchers("/api/gestao/**").hasAnyRole("GESTOR", "PROFESSOR")
+                        
+                        // Rotas de Administração de Usuários (Admin) restritas APENAS para GESTOR
+                        .requestMatchers("/api/admin/**").hasRole("GESTOR")
+                        
                         // Libera OPTIONS globalmente
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        
                         // O resto exige login
                         .anyRequest().authenticated()
                 )

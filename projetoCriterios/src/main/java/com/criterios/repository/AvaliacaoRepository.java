@@ -13,9 +13,7 @@ public interface AvaliacaoRepository extends JpaRepository<Avaliacao, Long> {
     
     Optional<Avaliacao> findByAlunoIdAndCriterioId(Long alunoId, Long criterioId);
 
-    // CORREÇÃO: Navegação ajustada para passar por 'capacidade'
-    // Antes: c.disciplina.id
-    // Agora: c.capacidade.disciplina.id
-    @Query("SELECT a FROM Avaliacao a JOIN a.criterio c WHERE a.aluno.id = :alunoId AND c.capacidade.disciplina.id = :disciplinaId")
-    List<Avaliacao> findByAlunoAndDisciplina(@Param("alunoId") Long alunoId, @Param("disciplinaId") Long disciplinaId);
+    // [SNAPSHOT] Busca avaliações pelo Aluno e pelo ID da EstruturaDisciplina (Snapshot)
+    @Query("SELECT a FROM Avaliacao a JOIN a.criterio c JOIN c.capacidade cap WHERE a.aluno.id = :alunoId AND cap.estruturaDisciplina.id = :estruturaDisciplinaId")
+    List<Avaliacao> findByAlunoAndEstruturaDisciplina(@Param("alunoId") Long alunoId, @Param("estruturaDisciplinaId") Long estruturaDisciplinaId);
 }

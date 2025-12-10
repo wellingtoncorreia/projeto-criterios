@@ -24,6 +24,7 @@ public class AvaliacaoController {
     @PostMapping
     public ResponseEntity<?> registrar(@RequestBody @Valid AvaliacaoDTO dto) {
         try {
+            // O DTO já carrega o EstruturaDisciplinaId
             log.info("Registrando avaliação para aluno {}, critério {}", dto.getAlunoId(), dto.getCriterioId());
             Avaliacao resultado = avaliacaoServices.registrarAvaliacao(dto);
             return ResponseEntity.ok(resultado);
@@ -39,9 +40,10 @@ public class AvaliacaoController {
     @GetMapping
     public ResponseEntity<List<Avaliacao>> listarAvaliacoes(
             @RequestParam Long alunoId, 
-            @RequestParam Long disciplinaId) {
+            @RequestParam Long estruturaDisciplinaId) { // CORRIGIDO: Usa EstruturaDisciplinaId
         try {
-            return ResponseEntity.ok(avaliacaoRepository.findByAlunoAndDisciplina(alunoId, disciplinaId));
+            // CORRIGIDO: Chama o método adaptado para o Snapshot
+            return ResponseEntity.ok(avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, estruturaDisciplinaId));
         } catch (Exception e) {
             log.error("Erro ao listar avaliações: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
@@ -51,9 +53,10 @@ public class AvaliacaoController {
     @GetMapping("/boletim")
     public ResponseEntity<?> consultarBoletim(
             @RequestParam Long alunoId, 
-            @RequestParam Long disciplinaId) {
+            @RequestParam Long estruturaDisciplinaId) { // CORRIGIDO: Usa EstruturaDisciplinaId
         try {
-            return ResponseEntity.ok(avaliacaoServices.calcularNivelAluno(alunoId, disciplinaId));
+            // CORRIGIDO: Passa EstruturaDisciplinaId para o serviço
+            return ResponseEntity.ok(avaliacaoServices.calcularNivelAluno(alunoId, estruturaDisciplinaId));
         } catch (Exception e) {
             log.error("Erro ao calcular boletim: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(e.getMessage());
@@ -63,9 +66,10 @@ public class AvaliacaoController {
     @GetMapping("/boletim/turma/{turmaId}")
     public ResponseEntity<?> consultarBoletimTurma(
             @PathVariable Long turmaId,
-            @RequestParam Long disciplinaId) {
+            @RequestParam Long estruturaDisciplinaId) { // CORRIGIDO: Usa EstruturaDisciplinaId
         try {
-            return ResponseEntity.ok(avaliacaoServices.gerarBoletimTurma(turmaId, disciplinaId));
+            // CORRIGIDO: Passa EstruturaDisciplinaId para o serviço
+            return ResponseEntity.ok(avaliacaoServices.gerarBoletimTurma(turmaId, estruturaDisciplinaId));
         } catch (Exception e) {
             log.error("Erro ao gerar boletim da turma: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(e.getMessage());
@@ -76,9 +80,10 @@ public class AvaliacaoController {
     @PostMapping("/fechar")
     public ResponseEntity<?> fecharAvaliacao(
             @RequestParam Long alunoId,
-            @RequestParam Long disciplinaId) {
+            @RequestParam Long estruturaDisciplinaId) { // CORRIGIDO: Usa EstruturaDisciplinaId
         try {
-            ResultadoBoletimDTO resultado = avaliacaoServices.finalizarAvaliacao(alunoId, disciplinaId);
+            // CORRIGIDO: Passa EstruturaDisciplinaId para o serviço
+            ResultadoBoletimDTO resultado = avaliacaoServices.finalizarAvaliacao(alunoId, estruturaDisciplinaId);
             return ResponseEntity.ok(resultado);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -92,9 +97,10 @@ public class AvaliacaoController {
     @PostMapping("/fechar/turma/{turmaId}")
     public ResponseEntity<?> fecharAvaliacaoTurma(
             @PathVariable Long turmaId,
-            @RequestParam Long disciplinaId) {
+            @RequestParam Long estruturaDisciplinaId) { // CORRIGIDO: Usa EstruturaDisciplinaId
         try {
-            List<ResultadoBoletimDTO> resultados = avaliacaoServices.finalizarAvaliacaoTurma(turmaId, disciplinaId);
+            // CORRIGIDO: Passa EstruturaDisciplinaId para o serviço
+            List<ResultadoBoletimDTO> resultados = avaliacaoServices.finalizarAvaliacaoTurma(turmaId, estruturaDisciplinaId);
             return ResponseEntity.ok(resultados);
         } catch (RuntimeException e) {
             log.error("Erro ao fechar avaliação da turma: {}", e.getMessage());
@@ -110,9 +116,10 @@ public class AvaliacaoController {
     @PostMapping("/reabrir")
     public ResponseEntity<?> reabrirAvaliacao(
             @RequestParam Long alunoId,
-            @RequestParam Long disciplinaId) {
+            @RequestParam Long estruturaDisciplinaId) { // CORRIGIDO: Usa EstruturaDisciplinaId
         try {
-            avaliacaoServices.reabrirAvaliacao(alunoId, disciplinaId);
+            // CORRIGIDO: Passa EstruturaDisciplinaId para o serviço
+            avaliacaoServices.reabrirAvaliacao(alunoId, estruturaDisciplinaId);
             return ResponseEntity.ok("Avaliação reaberta com sucesso.");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

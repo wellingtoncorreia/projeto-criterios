@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="d23cf73e-96c2-4157-b950-946375f77ea4" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/config/DataInitializer.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/config/DataInitializer.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/controller/AvaliacaoController.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/controller/AvaliacaoController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/controller/GestaoController.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/controller/GestaoController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/controller/ReferenciaController.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/controller/ReferenciaController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/dto/AvaliacaoDTO.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/dto/AvaliacaoDTO.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/dto/TurmaDTO.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/dto/TurmaDTO.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/dto/TurmaResponseDTO.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/dto/TurmaResponseDTO.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Capacidade.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Capacidade.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Criterio.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Criterio.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Disciplina.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Disciplina.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/NivelAvaliacao.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/NivelAvaliacao.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Turma.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/entities/Turma.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/AvaliacaoRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/AvaliacaoRepository.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/CapacidadeRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/CapacidadeRepository.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/CriterioRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/CriterioRepository.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/NivelAvaliacaoRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/repository/NivelAvaliacaoRepository.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/ArquivoService.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/ArquivoService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/AvaliacaoServices.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/AvaliacaoServices.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/GerenciamentoCriterioService.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/GerenciamentoCriterioService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/TurmaService.java" beforeDir="false" afterPath="$PROJECT_DIR$/projetoCriterios/src/main/java/com/criterios/services/TurmaService.java" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 7
+}]]></component>
+  <component name="ProjectId" id="36eb0BhVFFdDfD2Ysens58HtSMk" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "dart.analysis.tool.window.visible": "false",
+    "show.migrate.to.gradle.popup": "false"
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="d23cf73e-96c2-4157-b950-946375f77ea4" name="Changes" comment="" />
+      <created>1765369759504</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1765369759504</updated>
+    </task>
+    <servers />
+  </component>
+</project>
