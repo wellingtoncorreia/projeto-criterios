@@ -7,7 +7,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import api from "@/app/services/api";
 import { Turma, Disciplina } from "@/app/types";
 
-// Interfaces locais
+// ... (Interfaces mantidas iguais) ...
 interface Boletim {
   nomeAluno: string;
   qtdCriticosAtendidos: number;
@@ -26,7 +26,7 @@ interface NivelRegra {
 }
 
 interface DisciplinaComSnapshot extends Disciplina {
-  snapshotId: number | null; // ID do snapshot válido ou null se não tiver
+  snapshotId: number | null;
   isPrincipal: boolean;
 }
 
@@ -37,26 +37,25 @@ interface PageProps {
 export default function RelatorioNotasPage({ params }: PageProps) {
   const { id: turmaId } = use(params);
   const searchParams = useSearchParams();
-  // const router = useRouter(); // Não estamos usando router push explícito aqui, apenas replaceState
+  
+  // [NOVO] Captura a origem da navegação ('detalhes' ou 'avaliacao')
+  const origem = searchParams.get('origem'); 
 
-  // Estados
   const [turma, setTurma] = useState<Turma | null>(null);
   const [disciplinas, setDisciplinas] = useState<DisciplinaComSnapshot[]>([]);
   
-  // O ID selecionado aqui é o ID do SNAPSHOT (estruturaDisciplinaId)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(searchParams.get('estruturaId'));
 
   const [boletins, setBoletins] = useState<Boletim[]>([]);
   const [niveisRegra, setNiveisRegra] = useState<NivelRegra[]>([]);
   
-  const [loadingDados, setLoadingDados] = useState(true); // Carregamento inicial (Turma/Disciplinas)
-  const [loadingRelatorio, setLoadingRelatorio] = useState(false); // Carregamento do relatório (Tabela)
+  const [loadingDados, setLoadingDados] = useState(true);
+  const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
-  // 1. Carrega Turma e Lista de Disciplinas (com seus Snapshots)
+  // ... (carregarDadosIniciais mantido igual) ...
   const carregarDadosIniciais = useCallback(async () => {
     setLoadingDados(true);
     try {
-      // Busca dados da turma e lista de disciplinas em paralelo
       const [resTurma, resDiscs] = await Promise.all([
         api.get<Turma>(`/turmas/${turmaId}`),
         api.get<Disciplina[]>(`/turmas/${turmaId}/disciplinas`)
@@ -65,23 +64,18 @@ export default function RelatorioNotasPage({ params }: PageProps) {
       const turmaData = resTurma.data;
       setTurma(turmaData);
 
-      // Resolve o Snapshot ID para cada disciplina
       const disciplinasPromises = resDiscs.data.map(async (d) => {
         let snapId: number | null = null;
-        
-        // Se for a disciplina principal e já tiver o ID no objeto Turma, usa ele
         if (d.id === turmaData.disciplinaId && turmaData.estruturaSnapshotId) {
             snapId = turmaData.estruturaSnapshotId;
         } else {
-            // Senão, consulta a API para descobrir o snapshot ativo dessa disciplina
             try {
                 const res = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
                 snapId = res.data;
             } catch {
-                snapId = null; // Sem snapshot criado
+                snapId = null;
             }
         }
-
         return {
           ...d,
           isPrincipal: d.id === turmaData.disciplinaId,
@@ -92,14 +86,11 @@ export default function RelatorioNotasPage({ params }: PageProps) {
       const disciplinasResolvidas = await Promise.all(disciplinasPromises);
       setDisciplinas(disciplinasResolvidas);
 
-      // Define a seleção inicial se não houver nenhuma na URL
       if (!selectedSnapshotId) {
-        // Tenta selecionar a principal primeiro
         const principal = disciplinasResolvidas.find(d => d.isPrincipal && d.snapshotId);
         if (principal) {
             setSelectedSnapshotId(principal.snapshotId!.toString());
         } else {
-            // Se não, pega a primeira que tiver snapshot
             const qualqer = disciplinasResolvidas.find(d => d.snapshotId);
             if (qualqer) setSelectedSnapshotId(qualqer.snapshotId!.toString());
         }
@@ -114,7 +105,6 @@ export default function RelatorioNotasPage({ params }: PageProps) {
 
   useEffect(() => { carregarDadosIniciais(); }, [carregarDadosIniciais]);
 
-  // 2. Carrega o Relatório quando o Snapshot Selecionado muda
   useEffect(() => {
     if (!selectedSnapshotId) {
         setBoletins([]);
@@ -124,44 +114,41 @@ export default function RelatorioNotasPage({ params }: PageProps) {
 
     setLoadingRelatorio(true);
     
-    // Atualiza URL sem recarregar a página para manter o estado ao dar F5
-    const novaUrl = `/gestao/turmas/${turmaId}/relatorio?estruturaId=${selectedSnapshotId}`;
+    // [AJUSTE] Mantém a origem na URL ao trocar de filtro, para o botão voltar não quebrar
+    const paramsUrl = new URLSearchParams();
+    paramsUrl.set('estruturaId', selectedSnapshotId);
+    if (origem) paramsUrl.set('origem', origem);
+
+    const novaUrl = `/gestao/turmas/${turmaId}/relatorio?${paramsUrl.toString()}`;
     window.history.replaceState(null, '', novaUrl);
 
     Promise.all([
-      // Rota corrigida: /avaliacoes/boletim/turma/ (com barra)
       api.get<Boletim[]>(`/avaliacoes/boletim/turma/${turmaId}`, { 
         params: { estruturaDisciplinaId: selectedSnapshotId } 
       }),
-      // Busca regras do snapshot (agora o backend tem esse endpoint)
       api.get<NivelRegra[]>(`/disciplinas/niveis/snapshot/${selectedSnapshotId}`)
     ])
     .then(([resBol, resNiveis]) => {
-        // Ordena boletim por nome
         const ordenado = Array.isArray(resBol.data) 
             ? resBol.data.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno)) 
             : [];
         setBoletins(ordenado);
 
-        // Proteção: Garante que é array antes de setar
         const regras = Array.isArray(resNiveis.data) ? resNiveis.data : [];
         setNiveisRegra(regras);
     })
     .catch(err => {
         console.error("Erro ao carregar relatório", err);
         setBoletins([]);
-        setNiveisRegra([]); // Reseta para evitar erro de map
+        setNiveisRegra([]);
     })
     .finally(() => setLoadingRelatorio(false));
 
-  }, [turmaId, selectedSnapshotId]);
-
-  // --- Renderização ---
+  }, [turmaId, selectedSnapshotId, origem]);
 
   if (loadingDados) return <div className="p-8 text-center flex flex-col items-center text-gray-500"><Loader2 className="animate-spin mb-2"/> Carregando contexto da turma...</div>;
   if (!turma) return <div className="p-8 text-center text-red-500">Turma não encontrada.</div>;
 
-  // Encontra o objeto da disciplina selecionada para exibir info extra
   const disciplinaAtiva = disciplinas.find(d => d.snapshotId?.toString() === selectedSnapshotId);
 
   return (
@@ -170,15 +157,32 @@ export default function RelatorioNotasPage({ params }: PageProps) {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <Link href={`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${selectedSnapshotId}`} className="text-gray-500 hover:text-blue-600 flex items-center gap-2 mb-2 text-sm font-medium">
-            <ArrowLeft size={16} /> Voltar para Avaliação
-          </Link>
+          
+          {/* [LÓGICA DO BOTÃO VOLTAR] */}
+          {origem === 'detalhes' ? (
+             <Link 
+               href={`/gestao/turmas/${turmaId}`} 
+               className="text-gray-500 hover:text-blue-600 flex items-center gap-2 mb-2 text-sm font-medium"
+             >
+               <ArrowLeft size={16} /> Voltar para Detalhes
+             </Link>
+          ) : (
+             <Link 
+               // Inclui discId para a página de avaliação carregar corretamente
+               href={`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${selectedSnapshotId}&discId=${disciplinaAtiva?.id || ''}`} 
+               className="text-gray-500 hover:text-blue-600 flex items-center gap-2 mb-2 text-sm font-medium"
+             >
+               <ArrowLeft size={16} /> Voltar para Avaliação
+             </Link>
+          )}
+
           <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
             <FileBarChart className="text-blue-600" /> Relatório Final da Turma
           </h1>
           <p className="text-gray-500 mt-1">Turma: {turma.nome} | {turma.anoSemestre}</p>
         </div>
 
+        {/* ... (Seletor de disciplina mantido igual) ... */}
         <div className="flex items-center gap-3 bg-white p-3 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 mr-2">
             <BookOpen size={18} /> Disciplina:
@@ -195,7 +199,7 @@ export default function RelatorioNotasPage({ params }: PageProps) {
                 <option 
                     key={disc.id} 
                     value={disc.snapshotId?.toString() || ''} 
-                    disabled={!disc.snapshotId} // Desabilita se não tiver snapshot (não tem relatório)
+                    disabled={!disc.snapshotId}
                 >
                     {disc.nome} {disc.isPrincipal ? '(Principal)' : ''} {!disc.snapshotId ? '(Sem Avaliação Iniciada)' : ''}
                 </option>
@@ -204,6 +208,7 @@ export default function RelatorioNotasPage({ params }: PageProps) {
         </div>
       </div>
 
+      {/* ... (Restante do conteúdo: Tabela e Régua de Níveis mantidos iguais) ... */}
       {!selectedSnapshotId ? (
          <div className="p-12 text-center bg-white rounded-xl border border-dashed border-gray-300">
             <BarChart3 className="mx-auto h-12 w-12 text-gray-300 mb-4" />
@@ -212,18 +217,17 @@ export default function RelatorioNotasPage({ params }: PageProps) {
          </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-            
             {/* Tabela de Desempenho */}
             <div className="xl:col-span-3 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[400px]">
                 <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
-                <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                    <BarChart3 size={20} /> Desempenho - {disciplinaAtiva?.nome || 'Disciplina'}
-                </h3>
-                {boletins.length > 0 && (
-                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-bold">
-                        {boletins.length} Alunos Listados
-                    </span>
-                )}
+                    <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                        <BarChart3 size={20} /> Desempenho - {disciplinaAtiva?.nome || 'Disciplina'}
+                    </h3>
+                    {boletins.length > 0 && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-bold">
+                            {boletins.length} Alunos Listados
+                        </span>
+                    )}
                 </div>
 
                 {loadingRelatorio ? (

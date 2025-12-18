@@ -473,7 +473,7 @@ export default function AvaliacaoTurmaPage() {
                   )}
 
                   {isSnapshotReady && (
-                    <Link href={`/gestao/turmas/${turmaId}/relatorio?estruturaId=${safeEstruturaId}`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm font-medium transition text-xs"><FileBarChart size={16} /> Relatório</Link>
+                    <Link href={`/gestao/turmas/${turmaId}/relatorio?estruturaId=${safeEstruturaId}&origem=avaliacao`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm font-medium transition text-xs"><FileBarChart size={16} /> Relatório</Link>
                   )}
 
                   {isSnapshotReady && (

@@ -78,11 +78,10 @@ public class DisciplinaController {
         return ResponseEntity.notFound().build(); 
     }
 
-    // --- [NOVO] ENDPOINT PARA RELATÓRIO E AVALIAÇÃO (Busca por Snapshot ID) ---
-    // Corrige o erro 404 ao carregar a régua de níveis no relatório
     @GetMapping("/niveis/snapshot/{snapshotId}")
-    public ResponseEntity<List<NivelAvaliacao>> listarNiveisPorSnapshot(@PathVariable Long snapshotId) {
-        List<NivelAvaliacao> niveis = nivelRepository.findBySnapshotDisciplinaIdOrderByNivelAsc(snapshotId);
+    public ResponseEntity<List<NivelAvaliacao>> listarNiveisPorSnapshotDesc(@PathVariable Long snapshotId) {
+        // ALTERADO: De 'OrderByNivelAsc' para 'OrderByNivelDesc'
+        List<NivelAvaliacao> niveis = nivelRepository.findBySnapshotDisciplinaIdOrderByNivelDesc(snapshotId);
         return ResponseEntity.ok(niveis != null ? niveis : new ArrayList<>());
     }
 }

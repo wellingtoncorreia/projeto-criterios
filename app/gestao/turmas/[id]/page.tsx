@@ -1,24 +1,40 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { ArrowLeft, UserPlus, Users, BarChart, Send, Download, Trash2, Settings } from 'lucide-react';
+import { useRouter } from 'next/navigation'; // Adicionado useRouter
+import { 
+  ArrowLeft, UserPlus, Users, BarChart, Send, Download, Trash2, Settings,
+  X, Loader2, CheckCircle2, AlertCircle, GraduationCap // Novos ícones
+} from 'lucide-react';
 import Link from 'next/link';
 import api from '@/app/services/api';
 import Swal from 'sweetalert2';
-import { Turma, Aluno } from '@/app/types';
+import { Turma, Aluno, Disciplina } from '@/app/types'; // Adicionado Disciplina
 import ImportadorAlunos from '@/app/components/forms/ImportadorAlunos'; 
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+// Interface auxiliar para o Modal
+interface DisciplinaOpcao extends Disciplina {
+  snapshotId: number | null;
+  status: 'PRONTO' | 'SEM_SNAPSHOT' | 'CARREGANDO';
+}
+
 export default function DetalhesTurmaPage({ params }: PageProps) {
-  const { id } = use(params); // Next.js 15 unwrap
+  const { id } = use(params);
+  const router = useRouter(); // Hook de navegação
   
   const [turma, setTurma] = useState<Turma | null>(null);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [loading, setLoading] = useState(true);
   const [showImportador, setShowImportador] = useState(false);
+
+  // --- Estados do Modal de Avaliação ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [disciplinasModal, setDisciplinasModal] = useState<DisciplinaOpcao[]>([]);
+  const [loadingModal, setLoadingModal] = useState(false);
 
   // Carrega dados da turma e dos alunos
   async function carregarDados() {
@@ -38,6 +54,60 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
     }
   }
 
+  // --- Lógica do Modal de Avaliação (A mesma da listagem) ---
+  const abrirModalAvaliacao = async () => {
+    if (!turma) return;
+    
+    setIsModalOpen(true);
+    setLoadingModal(true);
+    setDisciplinasModal([]);
+
+    try {
+        // 1. Busca todas as disciplinas da turma
+        const resDiscs = await api.get<Disciplina[]>(`/turmas/${turma.id}/disciplinas`);
+        const disciplinasBasicas = resDiscs.data;
+
+        // 2. Verifica Snapshot em tempo real
+        const disciplinasVerificadas = await Promise.all(disciplinasBasicas.map(async (d) => {
+            let snapId: number | null = null;
+
+            // Tenta usar o cache da Turma se for a principal
+            if (d.id === turma.disciplinaId && turma.estruturaSnapshotId) {
+                snapId = turma.estruturaSnapshotId;
+            } else {
+                // Senão, consulta API
+                try {
+                    const resSnap = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
+                    snapId = resSnap.data;
+                } catch {
+                    snapId = null;
+                }
+            }
+
+            return {
+                ...d,
+                snapshotId: snapId,
+                status: snapId ? 'PRONTO' : 'SEM_SNAPSHOT'
+            } as DisciplinaOpcao;
+        }));
+
+        setDisciplinasModal(disciplinasVerificadas);
+
+    } catch (err) {
+        console.error("Erro ao carregar disciplinas", err);
+        Swal.fire('Erro', 'Não foi possível buscar as disciplinas.', 'error');
+        setIsModalOpen(false);
+    } finally {
+        setLoadingModal(false);
+    }
+  };
+
+  const handleNavegarAvaliacao = (snapshotId: number, discId: number) => {
+      setIsModalOpen(false);
+      // Redireciona com snapshotId E discId
+      router.push(`/gestao/turmas/${id}/avaliacao?estruturaId=${snapshotId}&discId=${discId}`);
+  };
+
   // Exclusão de aluno
   async function handleDeleteAluno(alunoId: number, nomeAluno: string) {
     const result = await Swal.fire({
@@ -52,10 +122,9 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
 
     if (result.isConfirmed) {
       try {
-        // Certifique-se que o endpoint DELETE /alunos/{id} existe no AlunoController
         await api.delete(`/alunos/${alunoId}`);
         await Swal.fire('Excluído!', 'O aluno foi removido.', 'success');
-        carregarDados(); // Atualiza a lista
+        carregarDados(); 
       } catch (error) {
         Swal.fire('Erro', 'Não foi possível excluir o aluno.', 'error');
       }
@@ -66,10 +135,10 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
     carregarDados();
   }, [id]);
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Carregando dados da turma...</div>;
+  if (loading) return <div className="p-8 text-center text-gray-500 flex flex-col items-center"><Loader2 className="animate-spin mb-2"/> Carregando dados da turma...</div>;
   if (!turma) return <div className="p-8 text-center text-red-500">Turma não encontrada.</div>;
 
-  // Verifica se existe uma estrutura de avaliação (Snapshot) vinculada
+  // Verifica se existe Snapshot principal para exibir o botão de relatório (mantido lógica simples para relatório)
   const isStructureReady = turma.estruturaSnapshotId !== undefined && turma.estruturaSnapshotId !== null;
 
   return (
@@ -85,38 +154,23 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
         </Link>
         
         <div className="flex flex-wrap gap-3">
-            {/* Botão de Configurações (Edição) */}
-            <Link 
-                href={`/gestao/turmas/${id}/editar`}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 flex items-center gap-2 text-sm font-medium transition"
-                title="Editar professores, nome ou redefinir disciplina"
+        {/* Botão de Avaliação - AGORA ABRE O MODAL */}
+            <button 
+                onClick={abrirModalAvaliacao}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
             >
-                <Settings size={18} /> Configurações
-            </Link>
-
-            {/* Botão de Avaliação (Só aparece se tiver Snapshot) */}
-            {isStructureReady ? (
-                <Link 
-                    href={`/gestao/turmas/${id}/avaliacao?estruturaId=${turma.estruturaSnapshotId}`}
-                    className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-                >
-                    <Send size={18} /> Avaliar Turma
-                </Link>
-            ) : (
-                <button disabled className="bg-gray-300 text-gray-500 px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium cursor-not-allowed" title="Vincule uma disciplina nas configurações para avaliar">
-                    <Send size={18} /> Avaliar (Indisponível)
-                </button>
-            )}
+                <Send size={18} /> Avaliar Turma
+            </button>
 
             {/* Botão de Relatório */}
-            {isStructureReady ? (
+            {isStructureReady && (
                 <Link 
-                    href={`/gestao/turmas/${id}/relatorio?estruturaId=${turma.estruturaSnapshotId}`}
+                    href={`/gestao/turmas/${id}/relatorio?estruturaId=${turma.estruturaSnapshotId}&origem=detalhes`}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
                 >
                     <BarChart size={18} /> Relatório/Boletim
                 </Link>
-            ) : null}
+            )}
 
             {/* Botão Importar Alunos */}
             <button 
@@ -140,9 +194,8 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
             <span>|</span>
             <span>{turma.termoAtual}º Termo</span>
             
-            {/* Indicador de Status do Snapshot */}
             <div className={`ml-auto px-3 py-1 rounded text-sm font-bold border ${isStructureReady ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
-                {isStructureReady ? 'Avaliação Ativa' : 'Estrutura Pendente'}
+                {isStructureReady ? 'Avaliação Ativa (Principal)' : 'Estrutura Pendente'}
             </div>
         </div>
         
@@ -201,6 +254,79 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
             onClose={() => setShowImportador(false)}
             onSuccess={carregarDados} 
         />
+      )}
+
+      {/* --- MODAL DE SELEÇÃO DE DISCIPLINA (NOVO) --- */}
+      {isModalOpen && turma && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                
+                <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800">Avaliar Turma</h3>
+                        <p className="text-sm text-gray-500">{turma.nome}</p>
+                    </div>
+                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="p-6">
+                    <p className="text-sm text-gray-600 mb-4">Selecione a disciplina que deseja avaliar:</p>
+                    
+                    {loadingModal ? (
+                        <div className="py-8 flex flex-col items-center text-gray-400">
+                            <Loader2 className="animate-spin mb-2" size={32}/>
+                            <p className="text-xs">Buscando avaliações disponíveis...</p>
+                        </div>
+                    ) : disciplinasModal.length === 0 ? (
+                        <div className="text-center py-6 bg-yellow-50 rounded-lg text-yellow-700 border border-yellow-200">
+                            <AlertCircle className="mx-auto mb-2" />
+                            Nenhuma disciplina encontrada.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {disciplinasModal.map((disc) => (
+                                <div key={disc.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 transition group">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${disc.snapshotId ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                            <GraduationCap size={20} />
+                                        </div>
+                                        <div>
+                                            <h4 className={`font-semibold ${disc.snapshotId ? 'text-gray-800' : 'text-gray-400'}`}>
+                                                {disc.nome}
+                                            </h4>
+                                            <span className="text-xs text-gray-500">
+                                                {disc.snapshotId 
+                                                    ? <span className="text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> Avaliação Ativa</span> 
+                                                    : 'Avaliação não iniciada'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => disc.snapshotId && handleNavegarAvaliacao(disc.snapshotId, disc.id)}
+                                        disabled={!disc.snapshotId}
+                                        className={`px-4 py-2 rounded text-sm font-medium transition
+                                            ${disc.snapshotId 
+                                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
+                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                                    >
+                                        Avaliar
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-gray-50 px-6 py-3 border-t text-center">
+                    <button onClick={() => setIsModalOpen(false)} className="text-sm text-gray-500 hover:text-gray-800 underline">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
       )}
     </div>
   );

@@ -1,20 +1,34 @@
 'use client';
-import Link from 'next/link';
-import { Plus, Users, GraduationCap, UserCheck, Edit, Trash2 } from 'lucide-react'; // Adicionado Trash2
-import { Turma } from '@/app/types';
 
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Plus, Users, GraduationCap, UserCheck, Edit, Trash2, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'; 
+import { Turma, Disciplina } from '@/app/types';
+
+import { useEffect, useState, useCallback } from 'react';
 import api from '@/app/services/api';
-import Swal from 'sweetalert2'; // Importado Swal
+import Swal from 'sweetalert2'; 
+
+// Interface local para controlar o estado no modal
+interface DisciplinaOpcao extends Disciplina {
+  snapshotId: number | null;
+  status: 'PRONTO' | 'SEM_SNAPSHOT' | 'CARREGANDO';
+}
 
 export default function TurmasPage() {
+  const router = useRouter();
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null); // [NOVO] Estado para o papel do usuário
+  const [userRole, setUserRole] = useState<string | null>(null);
 
-  // Função para recarregar as turmas
+  // --- Estados do Modal de Seleção ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTurma, setSelectedTurma] = useState<Turma | null>(null);
+  const [disciplinasModal, setDisciplinasModal] = useState<DisciplinaOpcao[]>([]);
+  const [loadingModal, setLoadingModal] = useState(false);
+
+  // --- Carregamento de Turmas ---
   async function carregarTurmas() {
-    // [CORREÇÃO] Checa a existência do token antes de fazer a chamada à API.
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) {
       setLoading(false);
@@ -24,7 +38,7 @@ export default function TurmasPage() {
     try {
       const res = await api.get('/turmas');
       setTurmas(res.data);
-    } catch (err) { // Se a chamada falhar (e.g., 403 com token inválido), o interceptor já redireciona.
+    } catch (err) {
       console.error(err);
       Swal.fire('Erro', 'Não foi possível carregar a lista de turmas.', 'error');
     } finally {
@@ -32,7 +46,6 @@ export default function TurmasPage() {
     }
   }
 
-  // Efeito para carregar o papel do usuário e as turmas
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setUserRole(localStorage.getItem('role'));
@@ -40,7 +53,7 @@ export default function TurmasPage() {
     carregarTurmas();
   }, []);
 
-  // [NOVA FUNÇÃO] Manipulador de Exclusão
+  // --- Lógica de Exclusão ---
   async function handleDelete(id: number, nome: string) {
     const result = await Swal.fire({
       title: 'Excluir Turma?',
@@ -56,14 +69,7 @@ export default function TurmasPage() {
     if (result.isConfirmed) {
       try {
         await api.delete(`/turmas/${id}`);
-        
-        await Swal.fire(
-          'Excluída!',
-          'A turma foi removida com sucesso.',
-          'success'
-        );
-        
-        // Atualiza a lista
+        await Swal.fire('Excluída!', 'A turma foi removida com sucesso.', 'success');
         carregarTurmas();
       } catch (error) {
         console.error(error);
@@ -72,24 +78,75 @@ export default function TurmasPage() {
     }
   }
 
-  // Variável de controle para Gestor
+  // --- Lógica do Modal de Avaliação ---
+  
+  const abrirModalAvaliacao = useCallback(async (turma: Turma) => {
+    setSelectedTurma(turma);
+    setIsModalOpen(true);
+    setLoadingModal(true);
+    setDisciplinasModal([]);
+
+    try {
+        const resDiscs = await api.get<Disciplina[]>(`/turmas/${turma.id}/disciplinas`);
+        const disciplinasBasicas = resDiscs.data;
+
+        const disciplinasVerificadas = await Promise.all(disciplinasBasicas.map(async (d) => {
+            let snapId: number | null = null;
+
+            if (d.id === turma.disciplinaId && turma.estruturaSnapshotId) {
+                snapId = turma.estruturaSnapshotId;
+            } else {
+                try {
+                    const resSnap = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
+                    snapId = resSnap.data;
+                } catch {
+                    snapId = null;
+                }
+            }
+
+            return {
+                ...d,
+                snapshotId: snapId,
+                status: snapId ? 'PRONTO' : 'SEM_SNAPSHOT'
+            } as DisciplinaOpcao;
+        }));
+
+        setDisciplinasModal(disciplinasVerificadas);
+
+    } catch (err) {
+        console.error("Erro ao carregar disciplinas da turma", err);
+        Swal.fire('Erro', 'Não foi possível carregar as disciplinas desta turma.', 'error');
+        setIsModalOpen(false);
+    } finally {
+        setLoadingModal(false);
+    }
+  }, []);
+
+  // [CORREÇÃO] Adicionado parâmetro discId e ajustada a URL
+  const handleNavegarAvaliacao = (turmaId: number, snapshotId: number, discId: number) => {
+      setIsModalOpen(false);
+      // Agora inclui &discId=...
+      router.push(`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${snapshotId}&discId=${discId}`);
+  };
+
+  // --- Renderização ---
+
   const isGestor = userRole === 'GESTOR';
 
-  if(loading) return <div className="p-8 text-center text-gray-500">Carregando turmas...</div>;
+  if(loading) return <div className="p-8 text-center text-gray-500 flex flex-col items-center"><Loader2 className="animate-spin mb-2"/> Carregando turmas...</div>;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto relative">
       <div className="flex justify-between items-center mb-6">
         <div>
             <h1 className="text-3xl font-bold text-gray-800">Gestão de Turmas</h1>
             <p className="text-gray-500">Visualize turmas e seus professores responsáveis.</p>
         </div>
         
-        {/* [ALTERADO] Botão de Nova Turma visível APENAS para GESTOR */}
         {isGestor && (
             <Link 
             href="/gestao/turmas/nova" 
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm"
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm transition"
             >
             <Plus size={20} />
             Nova Turma
@@ -119,7 +176,6 @@ export default function TurmasPage() {
                   </div>
                 </div>
 
-                {/* Lista de Professores */}
                 <div className="mb-4">
                     <p className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1">
                         <UserCheck size={14}/> Docentes
@@ -141,48 +197,42 @@ export default function TurmasPage() {
                 </div>
               </div>
               
-              {/* Seção de Ações: Agora as ações restritas são condicionais */}
               <div className={`border-t pt-4 mt-2 grid gap-2 ${isGestor ? 'grid-cols-4' : 'grid-cols-2'}`}>
                 
-                {/* Botão de Editar visível APENAS para GESTOR */}
                 {isGestor && (
-                    <Link 
-                        href={`/gestao/turmas/${t.id}/editar`}
-                        className="flex items-center justify-center gap-1 text-center bg-yellow-50 text-yellow-700 font-semibold py-2 rounded border border-yellow-200 hover:bg-yellow-100 hover:border-yellow-300 transition text-xs"
-                        title="Editar Turma"
-                    >
-                        <Edit size={14} /> Editar
-                    </Link>
+                    <>
+                        <Link 
+                            href={`/gestao/turmas/${t.id}/editar`}
+                            className="flex items-center justify-center gap-1 text-center bg-yellow-50 text-yellow-700 font-semibold py-2 rounded border border-yellow-200 hover:bg-yellow-100 transition text-xs"
+                            title="Editar Turma"
+                        >
+                            <Edit size={14} /> Editar
+                        </Link>
+                        <button
+                            onClick={() => handleDelete(t.id, t.nome)}
+                            className="flex items-center justify-center gap-1 text-center bg-red-50 text-red-700 font-semibold py-2 rounded border border-red-200 hover:bg-red-100 transition text-xs"
+                            title="Excluir Turma"
+                        >
+                            <Trash2 size={14} /> Excluir
+                        </button>
+                    </>
                 )}
 
-                {/* Botão de Excluir visível APENAS para GESTOR */}
-                {isGestor && (
-                    <button
-                        onClick={() => handleDelete(t.id, t.nome)}
-                        className="flex items-center justify-center gap-1 text-center bg-red-50 text-red-700 font-semibold py-2 rounded border border-red-200 hover:bg-red-100 hover:border-red-300 transition text-xs"
-                        title="Excluir Turma e Dados"
-                    >
-                        <Trash2 size={14} /> Excluir
-                    </button>
-                )}
-
-                {/* Link para Alunos (Detalhes da Turma) */}
                 <Link 
                   href={`/gestao/turmas/${t.id}`}
-                  className="flex items-center justify-center gap-1 text-center bg-gray-50 text-blue-600 font-semibold py-2 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition text-xs"
+                  className="flex items-center justify-center gap-1 text-center bg-gray-50 text-blue-600 font-semibold py-2 rounded border border-gray-200 hover:bg-blue-50 transition text-xs"
                   title="Gerenciar Alunos"
                 >
                   <Users size={14} /> Alunos
                 </Link>
 
-                {/* Link para Avaliação */}
-                <Link 
-                  href={`/gestao/turmas/${t.id}/avaliacao?estruturaId=${t.estruturaSnapshotId}`}
-                  className="flex items-center justify-center gap-1 text-center bg-green-50 text-green-700 font-semibold py-2 rounded border border-green-200 hover:bg-green-100 hover:border-green-300 transition text-xs"
+                <button 
+                  onClick={() => abrirModalAvaliacao(t)}
+                  className="flex items-center justify-center gap-1 text-center bg-green-50 text-green-700 font-semibold py-2 rounded border border-green-200 hover:bg-green-100 transition text-xs"
                   title="Lançar Notas"
                 >
                   <GraduationCap size={14} /> Avaliar
-                </Link>
+                </button>
               </div>
             </div>
           ))
@@ -192,6 +242,80 @@ export default function TurmasPage() {
           </div>
         )}
       </div>
+
+      {/* --- MODAL DE SELEÇÃO DE DISCIPLINA --- */}
+      {isModalOpen && selectedTurma && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                
+                <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800">Avaliar Turma</h3>
+                        <p className="text-sm text-gray-500">{selectedTurma.nome}</p>
+                    </div>
+                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="p-6">
+                    <p className="text-sm text-gray-600 mb-4">Selecione a disciplina que deseja avaliar:</p>
+                    
+                    {loadingModal ? (
+                        <div className="py-8 flex flex-col items-center text-gray-400">
+                            <Loader2 className="animate-spin mb-2" size={32}/>
+                            <p className="text-xs">Buscando avaliações disponíveis...</p>
+                        </div>
+                    ) : disciplinasModal.length === 0 ? (
+                        <div className="text-center py-6 bg-yellow-50 rounded-lg text-yellow-700 border border-yellow-200">
+                            <AlertCircle className="mx-auto mb-2" />
+                            Nenhuma disciplina encontrada para esta turma.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {disciplinasModal.map((disc) => (
+                                <div key={disc.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 transition group">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${disc.snapshotId ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                            <GraduationCap size={20} />
+                                        </div>
+                                        <div>
+                                            <h4 className={`font-semibold ${disc.snapshotId ? 'text-gray-800' : 'text-gray-400'}`}>
+                                                {disc.nome}
+                                            </h4>
+                                            <span className="text-xs text-gray-500">
+                                                {disc.snapshotId 
+                                                    ? <span className="text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> Avaliação Ativa</span> 
+                                                    : 'Avaliação não iniciada'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        // [CORREÇÃO] Passando o disc.id para a função de navegação
+                                        onClick={() => disc.snapshotId && handleNavegarAvaliacao(selectedTurma.id, disc.snapshotId, disc.id)}
+                                        disabled={!disc.snapshotId}
+                                        className={`px-4 py-2 rounded text-sm font-medium transition
+                                            ${disc.snapshotId 
+                                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
+                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                                    >
+                                        Avaliar
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-gray-50 px-6 py-3 border-t text-center">
+                    <button onClick={() => setIsModalOpen(false)} className="text-sm text-gray-500 hover:text-gray-800 underline">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 }
