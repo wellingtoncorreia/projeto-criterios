@@ -14,10 +14,17 @@ export default function TurmasPage() {
 
   // Função para recarregar as turmas
   async function carregarTurmas() {
+    // [CORREÇÃO] Checa a existência do token antes de fazer a chamada à API.
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+      
     try {
       const res = await api.get('/turmas');
       setTurmas(res.data);
-    } catch (err) {
+    } catch (err) { // Se a chamada falhar (e.g., 403 com token inválido), o interceptor já redireciona.
       console.error(err);
       Swal.fire('Erro', 'Não foi possível carregar a lista de turmas.', 'error');
     } finally {
@@ -25,7 +32,7 @@ export default function TurmasPage() {
     }
   }
 
-  // [NOVO] Efeito para carregar o papel do usuário
+  // Efeito para carregar o papel do usuário e as turmas
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setUserRole(localStorage.getItem('role'));

@@ -32,10 +32,13 @@ public class AuthController {
             Usuario usuario = (Usuario) auth.getPrincipal();
             var token = tokenService.gerarToken(usuario);
             
+            // [CORRIGIDO] Retorna a ROLE principal, não o tipo do Enum (para fins de clareza no frontend)
+            String rolePrincipal = usuario.getTipo() == TipoUsuario.GESTOR ? "GESTOR" : "PROFESSOR";
+            
             return ResponseEntity.ok(Map.of(
                 "token", token, 
                 "nome", usuario.getNome(),
-                "tipo", usuario.getTipo() // [NOVO] Retorna o tipo (GESTOR/PROFESSOR)
+                "tipo", rolePrincipal 
             ));
         } catch (Exception e) {
             return ResponseEntity.status(403).body("Erro de autenticação");

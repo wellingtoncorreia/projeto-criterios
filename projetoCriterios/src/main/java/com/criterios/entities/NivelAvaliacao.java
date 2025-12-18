@@ -1,6 +1,5 @@
 package com.criterios.entities;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -12,12 +11,13 @@ import lombok.AllArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class NivelAvaliacao {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private Integer nivel; // 5, 10... 100
+    private Integer nivel;
 
     @Column(nullable = false)
     private Integer minCriticos;
@@ -25,9 +25,15 @@ public class NivelAvaliacao {
     @Column(nullable = false)
     private Integer minDesejaveis;
 
-    // [ALTERADO] Liga-se ao EstruturaDisciplina (o Snapshot) ao invés de Disciplina
-    @JsonIgnore
+    // [CORRIGIDO] Adicionando campos necessários para o relatório e snapshot
+    private String sigla;
+    private String descricao;
+
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "estrutura_disciplina_id", nullable = false)
-    private EstruturaDisciplina estruturaDisciplina;
+    @JoinColumn(name = "estrutura_template_id")
+    private EstruturaTemplate estruturaTemplate;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "snapshot_disciplina_id")
+    private SnapshotDisciplina snapshotDisciplina;
 }

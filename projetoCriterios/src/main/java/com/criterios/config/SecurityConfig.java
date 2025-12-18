@@ -35,19 +35,28 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(req -> req
-                        // Libera TUDO que começa com /api/auth (Login e Register)
+                        
+                        // 1. Rotas Públicas (Autenticação e OPTIONS) - Mais permissivas
                         .requestMatchers("/api/auth/**").permitAll()
-                        
-                        // [CORRIGIDO] Rotas de gestão de estrutura (Importação/Níveis) liberadas para GESTOR e PROFESSOR
-                        .requestMatchers("/api/gestao/**").hasAnyRole("GESTOR", "PROFESSOR")
-                        
-                        // Rotas de Administração de Usuários (Admin) restritas APENAS para GESTOR
-                        .requestMatchers("/api/admin/**").hasRole("GESTOR")
-                        
-                        // Libera OPTIONS globalmente
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // 2. Rotas de GESTOR (Criação/Edição/Deleção de Disciplinas e Rotas de Admin)
+                        .requestMatchers("/api/admin/**").hasRole("GESTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/disciplinas").hasRole("GESTOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/disciplinas/**").hasRole("GESTOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/disciplinas/**").hasRole("GESTOR")
                         
-                        // O resto exige login
+                        // 3. Rotas de Autenticado (GET e Operações Gerais)
+                        .requestMatchers(HttpMethod.GET, "/api/disciplinas/**").authenticated() 
+                        
+                        // Rotas de Gestão Geral (CRUD de Turmas, Alunos, Avaliações, Arquivos, GestaoController)
+                        .requestMatchers("/api/turmas/**").authenticated()
+                        .requestMatchers("/api/alunos/**").authenticated()
+                        .requestMatchers("/api/avaliacoes/**").authenticated()
+                        .requestMatchers("/api/arquivos/**").authenticated()
+                        .requestMatchers("/api/gestao/**").authenticated() 
+
+                        // O que sobrar, exige autenticação (redundante, mas seguro)
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)

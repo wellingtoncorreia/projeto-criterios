@@ -1,3 +1,4 @@
+// app/types/index.ts
 // Tipos de Entidades Base
 
 export type TipoUsuario = 'GESTOR' | 'PROFESSOR';
@@ -19,21 +20,19 @@ export interface Disciplina {
     termo: number;
 }
 
+export interface Criterio {
+    id: number; // Garante que o ID existe para o mapeamento de avaliação
+    descricao: string;
+    tipo: TipoCriterio;
+    // Removendo a referência circular 'capacidade: Capacidade;'
+}
+
 export interface Capacidade {
     id: number;
     descricao: string;
     tipo: TipoCapacidade;
-    // O backend não retorna o objeto disciplina, mas sim o vínculo.
-    // Para edição, precisamos dos critérios aninhados.
+    // O backend precisa retornar critérios aninhados para o front-end
     criterios?: Criterio[]; 
-}
-
-export interface Criterio {
-    id: number;
-    descricao: string;
-    tipo: TipoCriterio;
-    capacidade: Capacidade;
-    // O backend retorna getDisciplinaId(), mas vamos usar a EstruturaDisciplina
 }
 
 export interface Avaliacao {
@@ -46,21 +45,21 @@ export interface Avaliacao {
 
 // DTOs
 
+// Renomeado de TurmaResponseDTO para Turma, para consistência, mas é o DTO de Resposta do Backend
 export interface Turma {
-    id: number;
-    nome: string;
-    anoSemestre: string;
-    termoAtual: number;
-    professores: Usuario[];
-    totalAlunos: number;
-    // [NOVO VERSIONAMENTO] Campos do Snapshot (EstruturaDisciplina)
-    disciplinaId: number; // ID da Disciplina TEMPLATE
-    estruturaSnapshotId: number; // ID da Estrutura Imutável (Snapshot) <-- ADICIONADO
-    nomeDisciplina: string; // Nome da Disciplina TEMPLATE (para exibição)
-     estruturaDisciplina?: {
-    id: number;
-  };
+  id: number;
+  nome: string;
+  anoSemestre: string;
+  termoAtual: number;
+  disciplinaId: number; // Referência ao Template
+  estruturaSnapshotId: number; // [NOVO] Referência à "foto" imutável
+  nomeDisciplina: string;
+  professores: Usuario[];
+  totalAlunos: number;
 }
+
+// [CORREÇÃO] Exportando o tipo de resposta do DTO (o mesmo de Turma)
+export type TurmaResponseDTO = Turma; 
 
 export interface Aluno {
     id: number;
@@ -78,4 +77,17 @@ export interface ResultadoBoletim {
   totalDesejaveisDisciplina: number;
   nivelAlcancado: number;
   percentualConclusao: number;
+}
+
+// Tipos auxiliares para ImportadorIterativo e comunicação entre componentes
+export interface CritItemDTO { 
+    id: string | number; // ID pode ser string (temp) ou number (final)
+    descricao: string; 
+    tipo: TipoCriterio; 
+}
+export interface CapItemDTO { 
+    id: string | number; 
+    descricao: string; 
+    tipo: TipoCapacidade; 
+    criterios: CritItemDTO[]; 
 }

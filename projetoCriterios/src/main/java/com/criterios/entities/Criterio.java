@@ -1,3 +1,4 @@
+// projetoCriterios/src/main/java/com/criterios/entities/Criterio.java
 package com.criterios.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -22,17 +23,17 @@ public class Criterio {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private TipoCriterio tipo; // CRITICO ou DESEJAVEL
+    private TipoCriterio tipo; 
 
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "capacidade_id", nullable = false)
     private Capacidade capacidade;
     
-    // Método auxiliar para pegar o ID da EstruturaDisciplina (o novo "dono")
-    public Long getEstruturaDisciplinaId() {
-        return capacidade != null && capacidade.getEstruturaDisciplina() != null 
-               ? capacidade.getEstruturaDisciplina().getId() 
+    // Método auxiliar para pegar o ID do Snapshot (o novo "dono")
+    public Long getSnapshotDisciplinaId() {
+        return capacidade != null && capacidade.getSnapshotDisciplina() != null 
+               ? capacidade.getSnapshotDisciplina().getId() 
                : null;
     }
 }

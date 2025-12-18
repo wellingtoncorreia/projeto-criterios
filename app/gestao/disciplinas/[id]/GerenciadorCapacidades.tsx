@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, ChevronDown, ChevronUp, Edit, Trash2, Loader2, AlertTriangle, UserCheck } from 'lucide-react';
 import { Capacidade, Criterio, TipoCapacidade, TipoCriterio } from '@/app/types';
-import api from '@/app/services/api';
+import apiService from '@/app/services/api'; // [CORRIGIDO] Renomeado de 'api' para 'apiService' para evitar duplicidade.
 import Swal from 'sweetalert2';
 
 interface Props {
@@ -28,8 +28,7 @@ export default function GerenciadorCapacidades({ disciplinaId, capacidadesInicia
   const [loading, setLoading] = useState(false);
   const [novoCrit, setNovoCrit] = useState<NovoCriterio | null>(null);
 
-  // [CORREÇÃO] Sincroniza o estado interno com o prop 'capacidadesIniciais'
-  // Garante que, após o salvamento no modal, a lista de capacidades seja atualizada.
+  // Sincroniza o estado interno com o prop 'capacidadesIniciais'
   useEffect(() => {
     setCapacidades(capacidadesIniciais);
   }, [capacidadesIniciais]);
@@ -62,13 +61,13 @@ export default function GerenciadorCapacidades({ disciplinaId, capacidadesInicia
             tipo: novoCrit.tipo,
         };
 
-        // Rota POST para adicionar o critério ao Template
-        await api.post('/api/gestao/criterios', payload);
+        // [CORRIGIDO] Removido o prefixo '/api' duplicado e usando apiService
+        await apiService.post('/gestao/criterios', payload);
         
         Swal.fire('Sucesso!', 'Critério adicionado.', 'success');
         
         setNovoCrit(null); // Limpa o formulário de novo critério
-        onEstruturaChange(); // [CRÍTICO] Força a recarga completa para atualizar a lista
+        onEstruturaChange(); // Força a recarga completa para atualizar a lista
         
     } catch (error: any) {
         Swal.fire('Erro', error.response?.data || 'Falha ao adicionar critério.', 'error');
@@ -91,9 +90,9 @@ export default function GerenciadorCapacidades({ disciplinaId, capacidadesInicia
     if (result.isConfirmed) {
       setLoading(true);
       try {
-        await api.delete(`/criterios/${critId}`);
+        await apiService.delete(`/criterios/${critId}`); // [CORRIGIDO] Usando apiService
         Swal.fire('Excluído!', 'Critério removido com sucesso.', 'success');
-        onEstruturaChange(); // [CRÍTICO] Força a recarga completa para atualizar a lista
+        onEstruturaChange(); // Força a recarga completa para atualizar a lista
       } catch (error) {
         Swal.fire('Erro', 'Não foi possível excluir o critério.', 'error');
       } finally {

@@ -10,65 +10,87 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class EstruturaService {
+public class SnapshotService {
 
     private final DisciplinaRepository disciplinaRepository;
     private final CapacidadeRepository capacidadeRepository;
     private final CriterioRepository criterioRepository;
     private final NivelAvaliacaoRepository nivelRepository;
-    private final EstruturaDisciplinaRepository estruturaDisciplinaRepository;
+    private final SnapshotDisciplinaRepository snapshotDisciplinaRepository;
+    private final EstruturaTemplateRepository estruturaTemplateRepository; 
 
-    /**
-     * Copia a estrutura atual de Capacidades, Critérios e Níveis de uma Disciplina (Template)
-     * para criar uma EstruturaDisciplina IMUTÁVEL (Snapshot) e a retorna.
-     * @param disciplinaTemplateId ID da disciplina (Template).
-     * @return EstruturaDisciplina (Snapshot).
-     */
     @Transactional
-    public EstruturaDisciplina criarSnapshotEstrutura(Long disciplinaTemplateId) {
+    public SnapshotDisciplina criarSnapshot(Long disciplinaTemplateId) {
         Disciplina template = disciplinaRepository.findById(disciplinaTemplateId)
                 .orElseThrow(() -> new RuntimeException("Disciplina (Template) não encontrada."));
 
-        // 1. Cria a EstruturaDisciplina (o novo container)
-        EstruturaDisciplina estrutura = new EstruturaDisciplina();
-        estrutura.setDisciplinaTemplateId(template.getId());
-        estrutura.setNomeDisciplina(template.getNome());
-        estrutura.setSiglaDisciplina(template.getSigla());
-        estrutura = estruturaDisciplinaRepository.save(estrutura);
+        // [CORREÇÃO] O Repositório retorna o objeto direto, então removemos o .orElse(null)
+        EstruturaTemplate estruturaTemplate = estruturaTemplateRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
+        
+        if (estruturaTemplate == null) {
+            throw new RuntimeException("A disciplina Template não possui Estrutura ATIVA. Importe critérios primeiro.");
+        }
+        
+        // 2. Cria o SnapshotDisciplina
+        SnapshotDisciplina snapshot = new SnapshotDisciplina();
+        snapshot.setDisciplinaTemplateId(template.getId());
+        snapshot.setNomeDisciplina(template.getNome());
+        snapshot.setSiglaDisciplina(template.getSigla());
+        
+        snapshot = snapshotDisciplinaRepository.save(snapshot); 
 
-        // 2. Copia as Capacidades
+        // 3. Busca Capacidades do TEMPLATE
         List<Capacidade> capacidadesTemplate = capacidadeRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
         
+        if (capacidadesTemplate.isEmpty()) {
+            throw new RuntimeException("A estrutura Template não possui Capacidades/Critérios para gerar o Snapshot.");
+        }
+
         for (Capacidade capTemplate : capacidadesTemplate) {
-            // Cria nova Capacidade (Snapshot)
             Capacidade capSnapshot = new Capacidade();
             capSnapshot.setDescricao(capTemplate.getDescricao());
             capSnapshot.setTipo(capTemplate.getTipo());
-            capSnapshot.setEstruturaDisciplina(estrutura); // Liga ao novo container
+            
+            capSnapshot.setSnapshotDisciplina(snapshot); 
+            capSnapshot.setEstruturaTemplate(estruturaTemplate);
+            
             capSnapshot = capacidadeRepository.save(capSnapshot);
 
-            // 3. Copia os Critérios
+            // 4. Busca Critérios do TEMPLATE
             List<Criterio> criteriosTemplate = criterioRepository.findByCapacidadeTemplateId(capTemplate.getId());
+            
             for (Criterio critTemplate : criteriosTemplate) {
                 Criterio critSnapshot = new Criterio();
                 critSnapshot.setDescricao(critTemplate.getDescricao());
                 critSnapshot.setTipo(critTemplate.getTipo());
-                critSnapshot.setCapacidade(capSnapshot); // Liga à nova Capacidade (Snapshot)
+                
+                critSnapshot.setCapacidade(capSnapshot); 
                 criterioRepository.save(critSnapshot);
             }
         }
         
-        // 4. Copia os Níveis de Avaliação
+        // 5. Busca e copia Níveis de Avaliação
         List<NivelAvaliacao> niveisTemplate = nivelRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
+        
         for (NivelAvaliacao nivelTemplate : niveisTemplate) {
             NivelAvaliacao nivelSnapshot = new NivelAvaliacao();
             nivelSnapshot.setNivel(nivelTemplate.getNivel());
             nivelSnapshot.setMinCriticos(nivelTemplate.getMinCriticos());
             nivelSnapshot.setMinDesejaveis(nivelTemplate.getMinDesejaveis());
-            nivelSnapshot.setEstruturaDisciplina(estrutura); // Liga ao novo container
+            
+            nivelSnapshot.setSigla(nivelTemplate.getSigla());
+            nivelSnapshot.setDescricao(nivelTemplate.getDescricao());
+            
+            nivelSnapshot.setSnapshotDisciplina(snapshot); 
+            nivelSnapshot.setEstruturaTemplate(estruturaTemplate);
             nivelRepository.save(nivelSnapshot);
         }
 
-        return estrutura;
+        return snapshot;
+    }
+    
+    @Transactional(readOnly = true)
+    public SnapshotDisciplina buscarSnapshotPorDisciplinaTemplateId(Long disciplinaTemplateId) {
+        return snapshotDisciplinaRepository.findTopByDisciplinaTemplateIdOrderByIdDesc(disciplinaTemplateId);
     }
 }

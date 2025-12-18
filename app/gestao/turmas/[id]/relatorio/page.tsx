@@ -1,294 +1,320 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Download, CheckSquare, RotateCcw } from 'lucide-react';
-import Link from 'next/link';
-import api from '@/app/services/api';
-import Swal from 'sweetalert2';
-import { Turma } from '@/app/types';
-import { formatPercentual } from '@/app/utils/formatters';
+import { useEffect, useState, use, useCallback } from "react";
+import { ArrowLeft, BookOpen, BarChart3, HelpCircle, Loader2, FileBarChart } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
+import api from "@/app/services/api";
+import { Turma, Disciplina } from "@/app/types";
 
-// Interface do DTO de Resultado (mesmo que venha do backend)
-interface ResultadoBoletimDTO {
-    nomeAluno: string;
-    nomeDisciplina: string;
-    qtdCriticosAtendidos: number;
-    qtdDesejaveisAtendidos: number;
-    totalCriticosDisciplina: number;
-    totalDesejaveisDisciplina: number;
-    nivelAlcancado: number;
-    percentualConclusao: number;
-    finalizada: boolean;
-    alunoId: number;
+// Interfaces locais
+interface Boletim {
+  nomeAluno: string;
+  qtdCriticosAtendidos: number;
+  qtdDesejaveisAtendidos: number;
+  totalCriticosDisciplina: number;
+  totalDesejaveisDisciplina: number;
+  nivelAlcancado: number;
+  percentualConclusao: number;
 }
 
-export default function RelatorioTurmaPage() {
-    const params = useParams();
-    const searchParams = useSearchParams();
-    const turmaId = params?.id as string;
-    
-    // Recebe o ID da Estrutura (Snapshot) da URL para inicialização
-    // É importante buscá-lo aqui, mas o mais confiável é o que vem no objeto Turma.
-    const estruturaDisciplinaIdUrl = searchParams.get('estruturaId'); 
+interface NivelRegra {
+  id: number;
+  nivel: number;
+  minCriticos: number;
+  minDesejaveis: number;
+}
 
-    const [turma, setTurma] = useState<Turma | null>(null);
-    const [resultados, setResultados] = useState<ResultadoBoletimDTO[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [finalizando, setFinalizando] = useState(false);
+interface DisciplinaComSnapshot extends Disciplina {
+  snapshotId: number | null; // ID do snapshot válido ou null se não tiver
+  isPrincipal: boolean;
+}
 
-    async function carregarBoletim() {
-        setLoading(true);
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default function RelatorioNotasPage({ params }: PageProps) {
+  const { id: turmaId } = use(params);
+  const searchParams = useSearchParams();
+  // const router = useRouter(); // Não estamos usando router push explícito aqui, apenas replaceState
+
+  // Estados
+  const [turma, setTurma] = useState<Turma | null>(null);
+  const [disciplinas, setDisciplinas] = useState<DisciplinaComSnapshot[]>([]);
+  
+  // O ID selecionado aqui é o ID do SNAPSHOT (estruturaDisciplinaId)
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(searchParams.get('estruturaId'));
+
+  const [boletins, setBoletins] = useState<Boletim[]>([]);
+  const [niveisRegra, setNiveisRegra] = useState<NivelRegra[]>([]);
+  
+  const [loadingDados, setLoadingDados] = useState(true); // Carregamento inicial (Turma/Disciplinas)
+  const [loadingRelatorio, setLoadingRelatorio] = useState(false); // Carregamento do relatório (Tabela)
+
+  // 1. Carrega Turma e Lista de Disciplinas (com seus Snapshots)
+  const carregarDadosIniciais = useCallback(async () => {
+    setLoadingDados(true);
+    try {
+      // Busca dados da turma e lista de disciplinas em paralelo
+      const [resTurma, resDiscs] = await Promise.all([
+        api.get<Turma>(`/turmas/${turmaId}`),
+        api.get<Disciplina[]>(`/turmas/${turmaId}/disciplinas`)
+      ]);
+
+      const turmaData = resTurma.data;
+      setTurma(turmaData);
+
+      // Resolve o Snapshot ID para cada disciplina
+      const disciplinasPromises = resDiscs.data.map(async (d) => {
+        let snapId: number | null = null;
         
-        let idSnapshot = estruturaDisciplinaIdUrl;
-
-        try {
-            const resTurma = await api.get<Turma>(`/turmas/${turmaId}`);
-            setTurma(resTurma.data);
-            
-            // Prioriza o ID do Snapshot vindo do objeto Turma (que é mais confiável)
-            if (resTurma.data.estruturaSnapshotId) { // <-- USANDO O CAMPO CORRETO
-                idSnapshot = resTurma.data.estruturaSnapshotId.toString(); 
+        // Se for a disciplina principal e já tiver o ID no objeto Turma, usa ele
+        if (d.id === turmaData.disciplinaId && turmaData.estruturaSnapshotId) {
+            snapId = turmaData.estruturaSnapshotId;
+        } else {
+            // Senão, consulta a API para descobrir o snapshot ativo dessa disciplina
+            try {
+                const res = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
+                snapId = res.data;
+            } catch {
+                snapId = null; // Sem snapshot criado
             }
-
-            if (!idSnapshot) {
-                Swal.fire('Erro', 'Estrutura da disciplina não definida para esta turma.', 'error');
-                setLoading(false);
-                return;
-            }
-
-            // [CORREÇÃO] Passa o ID do Snapshot para o endpoint
-            const resBoletim = await api.get<ResultadoBoletimDTO[]>(`/avaliacoes/boletim/turma/${turmaId}?estruturaDisciplinaId=${idSnapshot}`); 
-            setResultados(resBoletim.data);
-
-        } catch (error) {
-            console.error("Erro ao carregar boletim:", error);
-            Swal.fire('Erro', 'Não foi possível carregar o boletim da turma.', 'error');
-        } finally {
-            setLoading(false);
         }
+
+        return {
+          ...d,
+          isPrincipal: d.id === turmaData.disciplinaId,
+          snapshotId: snapId
+        } as DisciplinaComSnapshot;
+      });
+
+      const disciplinasResolvidas = await Promise.all(disciplinasPromises);
+      setDisciplinas(disciplinasResolvidas);
+
+      // Define a seleção inicial se não houver nenhuma na URL
+      if (!selectedSnapshotId) {
+        // Tenta selecionar a principal primeiro
+        const principal = disciplinasResolvidas.find(d => d.isPrincipal && d.snapshotId);
+        if (principal) {
+            setSelectedSnapshotId(principal.snapshotId!.toString());
+        } else {
+            // Se não, pega a primeira que tiver snapshot
+            const qualqer = disciplinasResolvidas.find(d => d.snapshotId);
+            if (qualqer) setSelectedSnapshotId(qualqer.snapshotId!.toString());
+        }
+      }
+
+    } catch (err) {
+      console.error("Erro ao carregar dados iniciais", err);
+    } finally {
+      setLoadingDados(false);
+    }
+  }, [turmaId, selectedSnapshotId]);
+
+  useEffect(() => { carregarDadosIniciais(); }, [carregarDadosIniciais]);
+
+  // 2. Carrega o Relatório quando o Snapshot Selecionado muda
+  useEffect(() => {
+    if (!selectedSnapshotId) {
+        setBoletins([]);
+        setNiveisRegra([]);
+        return;
     }
 
-    // Função de Download
-    const handleDownload = async () => {
-        // Usa o campo correto do DTO
-        if (!turma || !turma.estruturaSnapshotId) { 
-            Swal.fire('Erro', 'ID da estrutura de disciplina (Snapshot) não encontrado para exportação.', 'error');
-            return;
-        }
+    setLoadingRelatorio(true);
+    
+    // Atualiza URL sem recarregar a página para manter o estado ao dar F5
+    const novaUrl = `/gestao/turmas/${turmaId}/relatorio?estruturaId=${selectedSnapshotId}`;
+    window.history.replaceState(null, '', novaUrl);
 
-        try {
-            Swal.fire({
-                title: 'Preparando Download...',
-                text: 'Aguarde enquanto o arquivo é gerado.',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
+    Promise.all([
+      // Rota corrigida: /avaliacoes/boletim/turma/ (com barra)
+      api.get<Boletim[]>(`/avaliacoes/boletim/turma/${turmaId}`, { 
+        params: { estruturaDisciplinaId: selectedSnapshotId } 
+      }),
+      // Busca regras do snapshot (agora o backend tem esse endpoint)
+      api.get<NivelRegra[]>(`/disciplinas/niveis/snapshot/${selectedSnapshotId}`)
+    ])
+    .then(([resBol, resNiveis]) => {
+        // Ordena boletim por nome
+        const ordenado = Array.isArray(resBol.data) 
+            ? resBol.data.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno)) 
+            : [];
+        setBoletins(ordenado);
 
-            // [CORREÇÃO] Passa o ID do Snapshot
-            // alunoId=0 indica download do relatório completo da turma
-            const response = await api.get(`/arquivos/boletim/download?alunoId=0&estruturaDisciplinaId=${turma.estruturaSnapshotId}`, {
-                responseType: 'blob', // Recebe como Blob para download
-            });
+        // Proteção: Garante que é array antes de setar
+        const regras = Array.isArray(resNiveis.data) ? resNiveis.data : [];
+        setNiveisRegra(regras);
+    })
+    .catch(err => {
+        console.error("Erro ao carregar relatório", err);
+        setBoletins([]);
+        setNiveisRegra([]); // Reseta para evitar erro de map
+    })
+    .finally(() => setLoadingRelatorio(false));
 
-            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Boletim-${turma.nome.replace(/\s/g, '_')}-${turma.anoSemestre}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+  }, [turmaId, selectedSnapshotId]);
+
+  // --- Renderização ---
+
+  if (loadingDados) return <div className="p-8 text-center flex flex-col items-center text-gray-500"><Loader2 className="animate-spin mb-2"/> Carregando contexto da turma...</div>;
+  if (!turma) return <div className="p-8 text-center text-red-500">Turma não encontrada.</div>;
+
+  // Encontra o objeto da disciplina selecionada para exibir info extra
+  const disciplinaAtiva = disciplinas.find(d => d.snapshotId?.toString() === selectedSnapshotId);
+
+  return (
+    <div className="p-8 max-w-[1400px] mx-auto bg-gray-50 min-h-screen">
+      
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <Link href={`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${selectedSnapshotId}`} className="text-gray-500 hover:text-blue-600 flex items-center gap-2 mb-2 text-sm font-medium">
+            <ArrowLeft size={16} /> Voltar para Avaliação
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <FileBarChart className="text-blue-600" /> Relatório Final da Turma
+          </h1>
+          <p className="text-gray-500 mt-1">Turma: {turma.nome} | {turma.anoSemestre}</p>
+        </div>
+
+        <div className="flex items-center gap-3 bg-white p-3 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 mr-2">
+            <BookOpen size={18} /> Disciplina:
+          </div>
+          
+          <select 
+            value={selectedSnapshotId || ''} 
+            onChange={(e) => setSelectedSnapshotId(e.target.value)}
+            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 min-w-[250px]"
+          >
+            {disciplinas.length === 0 && <option value="">Nenhuma disciplina disponível</option>}
             
-            Swal.close();
-            Swal.fire('Sucesso', 'Download iniciado!', 'success');
-
-        } catch (error) {
-            Swal.close();
-            console.error("Erro no download:", error);
-            Swal.fire('Erro', 'Houve um erro ao gerar o arquivo de boletim.', 'error');
-        }
-    };
-    
-    // Função para Finalizar Turma
-    const handleFinalizarTurma = async () => {
-        if (!turma || !turma.estruturaSnapshotId) return;
-
-        const result = await Swal.fire({
-            title: 'Finalizar Avaliações da Turma?',
-            text: `Isso irá calcular o Nível Final para todos os alunos e travará o lançamento de notas para a turma "${turma.nome}". Esta ação é reversível.`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Sim, Finalizar'
-        });
-
-        if (result.isConfirmed) {
-            setFinalizando(true);
-            try {
-                // [CORREÇÃO] Passa o ID do Snapshot
-                await api.post(`/avaliacoes/finalizar/turma/${turmaId}?estruturaDisciplinaId=${turma.estruturaSnapshotId}`);
-                await Swal.fire('Sucesso!', 'Todas as avaliações da turma foram finalizadas.', 'success');
-                carregarBoletim();
-            } catch (error: any) {
-                const message = error.response?.data || 'Erro ao finalizar avaliações.';
-                Swal.fire('Erro', typeof message === 'string' ? message : 'Erro desconhecido.', 'error');
-            } finally {
-                setFinalizando(false);
-            }
-        }
-    };
-    
-    // Função para Reabrir Turma
-    const handleReabrirTurma = async () => {
-        if (!turma || !turma.estruturaSnapshotId) return;
-
-        const result = await Swal.fire({
-            title: 'Reabrir Turma para Avaliação?',
-            text: `Isso irá reverter a finalização das notas para a turma "${turma.nome}", permitindo novos lançamentos.`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Sim, Reabrir'
-        });
-
-        if (result.isConfirmed) {
-            setFinalizando(true);
-            try {
-                // [CORREÇÃO] Passa o ID do Snapshot
-                await api.post(`/avaliacoes/reabrir/turma/${turmaId}?estruturaDisciplinaId=${turma.estruturaSnapshotId}`);
-                await Swal.fire('Sucesso!', 'A turma foi reaberta para avaliação.', 'success');
-                carregarBoletim();
-            } catch (error: any) {
-                const message = error.response?.data || 'Erro ao reabrir avaliações.';
-                Swal.fire('Erro', typeof message === 'string' ? message : 'Erro desconhecido.', 'error');
-            } finally {
-                setFinalizando(false);
-            }
-        }
-    };
-
-
-    useEffect(() => {
-        carregarBoletim();
-    }, [turmaId]); 
-
-    // Determina o ID do Snapshot de forma segura para o JSX
-    const safeEstruturaId = turma?.estruturaSnapshotId?.toString(); // <-- USANDO O CAMPO CORRETO
-    
-    if (loading) return <div className="p-8 text-center text-gray-500"><Loader2 size={32} className="animate-spin mx-auto mb-2"/> Carregando Boletim...</div>;
-    if (!turma || !safeEstruturaId) return <div className="p-8 text-red-500">Turma não encontrada ou estrutura de avaliação não definida.</div>;
-
-    const nomeDisciplina = turma.nomeDisciplina || 'N/A';
-    const todosFinalizados = resultados.length > 0 && resultados.every(r => r.finalizada);
-
-    return (
-        <div className="p-8 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-                <Link 
-                    href={`/gestao/turmas/${turmaId}`} 
-                    className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
+            {disciplinas.map(disc => (
+                <option 
+                    key={disc.id} 
+                    value={disc.snapshotId?.toString() || ''} 
+                    disabled={!disc.snapshotId} // Desabilita se não tiver snapshot (não tem relatório)
                 >
-                    <ArrowLeft size={20} /> Voltar para Detalhes da Turma
-                </Link>
+                    {disc.nome} {disc.isPrincipal ? '(Principal)' : ''} {!disc.snapshotId ? '(Sem Avaliação Iniciada)' : ''}
+                </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
-                <div className="flex gap-3">
-                    {/* Botão de Finalizar/Reabrir Turma */}
-                    {todosFinalizados ? (
-                        <button 
-                            onClick={handleReabrirTurma}
-                            className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-                            disabled={finalizando}
-                        >
-                            {finalizando ? <Loader2 size={18} className="animate-spin"/> : <RotateCcw size={18} />} Reabrir Avaliações
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={handleFinalizarTurma}
-                            className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-                            disabled={finalizando}
-                        >
-                            {finalizando ? <Loader2 size={18} className="animate-spin"/> : <CheckSquare size={18} />} Finalizar Avaliações
-                        </button>
-                    )}
-                    
-                    {/* Botão de Download */}
-                    <button 
-                        onClick={handleDownload}
-                        className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-                    >
-                        <Download size={18} /> Exportar Boletim (XLSX)
-                    </button>
-                </div>
-            </div>
-
-            <div className="mb-8 border-b pb-4">
-                <h1 className="text-3xl font-bold text-gray-800">Boletim da Turma: {turma.nome}</h1>
-                <p className="text-gray-500 text-lg">
-                    Disciplina: {nomeDisciplina} | {turma.anoSemestre} - {turma.termoAtual}º Termo 
-                    <span className="ml-4 text-sm font-medium bg-gray-100 px-3 py-1 rounded-full">Snapshot ID: {safeEstruturaId}</span>
-                </p>
-                {todosFinalizados && (
-                    <div className="mt-4 p-3 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg font-semibold">
-                        <p>AVISO: As avaliações desta turma estão FINALIZADAS. O nível exibido é o resultado final.</p>
-                    </div>
+      {!selectedSnapshotId ? (
+         <div className="p-12 text-center bg-white rounded-xl border border-dashed border-gray-300">
+            <BarChart3 className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">Nenhum Relatório Disponível</h3>
+            <p className="text-gray-500 mt-2">Selecione uma disciplina acima que possua avaliação iniciada (Snapshot criado).</p>
+         </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+            
+            {/* Tabela de Desempenho */}
+            <div className="xl:col-span-3 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[400px]">
+                <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                    <BarChart3 size={20} /> Desempenho - {disciplinaAtiva?.nome || 'Disciplina'}
+                </h3>
+                {boletins.length > 0 && (
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-bold">
+                        {boletins.length} Alunos Listados
+                    </span>
                 )}
-            </div>
+                </div>
 
-            {/* Tabela de Resultados */}
-            <div className="bg-white shadow-lg rounded-lg overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aluno</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Críticos (Atendidos / Total)</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Desejáveis (Atendidos / Total)</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Conclusão</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nível Alcançado</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {resultados.map((res, index) => (
-                            <tr key={index} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {res.nomeAluno}
+                {loadingRelatorio ? (
+                <div className="p-20 text-center flex flex-col items-center justify-center text-gray-400">
+                    <Loader2 className="animate-spin mb-4" size={32} />
+                    <p>Processando notas e níveis...</p>
+                </div>
+                ) : boletins.length === 0 ? (
+                    <div className="p-12 text-center text-gray-500">
+                        Nenhum dado de avaliação encontrado para esta disciplina.
+                    </div>
+                ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="text-xs font-bold text-gray-500 uppercase border-b bg-gray-50/50">
+                            <th className="px-6 py-3">Aluno</th>
+                            <th className="px-6 py-3 text-center text-red-600">Críticos</th>
+                            <th className="px-6 py-3 text-center text-gray-600">Desejáveis</th>
+                            <th className="px-6 py-3 text-center">Nível Final</th>
+                            <th className="px-6 py-3 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {boletins.map((boletim, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50 transition group">
+                                <td className="px-6 py-4 font-medium text-gray-800">{boletim.nomeAluno}</td>
+                                <td className="px-6 py-4 text-center group-hover:bg-red-50/30 transition">
+                                    <span className="font-bold text-red-600">{boletim.qtdCriticosAtendidos}</span> 
+                                    <span className="text-gray-400 text-xs ml-1">/ {boletim.totalCriticosDisciplina}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                                    <span className={res.qtdCriticosAtendidos < res.totalCriticosDisciplina ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
-                                        {res.qtdCriticosAtendidos}
-                                    </span>
-                                    {' / '}
-                                    {res.totalCriticosDisciplina}
+                                <td className="px-6 py-4 text-center group-hover:bg-gray-50/50 transition">
+                                    <span className="font-bold text-gray-700">{boletim.qtdDesejaveisAtendidos}</span>
+                                    <span className="text-gray-400 text-xs ml-1">/ {boletim.totalDesejaveisDisciplina}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                                    {res.qtdDesejaveisAtendidos} / {res.totalDesejaveisDisciplina}
+                                <td className="px-6 py-4 text-center">
+                                    <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full border-2 font-bold ${boletim.nivelAlcancado >= 50 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                        {boletim.nivelAlcancado}
+                                    </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold">
-                                    {formatPercentual(res.percentualConclusao)}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                    <span className={`px-3 py-1 text-sm font-bold rounded-full ${
-                                        res.nivelAlcancado > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-red-100 text-red-700'
-                                    }`}>
-                                        NÍVEL {res.nivelAlcancado}
+                                <td className="px-6 py-4 text-center">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${boletim.nivelAlcancado >= 50 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                        {boletim.nivelAlcancado >= 50 ? 'APROVADO' : 'RETIDO'}
                                     </span>
                                 </td>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                )}
             </div>
 
-            {resultados.length === 0 && (
-                <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed text-gray-500 mt-6">
-                    <p>Nenhum aluno encontrado ou nenhuma avaliação registrada para esta turma.</p>
+            {/* Regra de Cálculo */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-fit">
+                <div className="px-4 py-3 border-b bg-yellow-50 flex items-center gap-2">
+                    <HelpCircle size={18} className="text-yellow-600" />
+                    <h3 className="font-bold text-yellow-800 text-sm uppercase">Régua de Níveis</h3>
                 </div>
-            )}
+                <div className="p-4 bg-yellow-50/30">
+                    <p className="text-[11px] text-gray-500 mb-3">
+                        Regras aplicadas para o cálculo de nível nesta avaliação (Snapshot #{selectedSnapshotId}):
+                    </p>
+                    <div className="overflow-hidden border rounded-lg bg-white">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-100 text-gray-600 text-[10px] uppercase">
+                                <tr>
+                                    <th className="px-2 py-2 text-center">Nível</th>
+                                    <th className="px-2 py-2 text-center text-red-600">Mín. Crít.</th>
+                                    <th className="px-2 py-2 text-center text-gray-600">Mín. Des.</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {niveisRegra.length === 0 ? (
+                                    <tr><td colSpan={3} className="text-center py-2 text-gray-400 text-xs">Sem regras definidas</td></tr>
+                                ) : (
+                                    niveisRegra.map((regra) => (
+                                        <tr key={regra.id}>
+                                            <td className="px-2 py-2 text-center font-bold text-blue-600">{regra.nivel}</td>
+                                            <td className="px-2 py-2 text-center font-medium">{regra.minCriticos}</td>
+                                            <td className="px-2 py-2 text-center text-gray-500">{regra.minDesejaveis}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
-    );
+      )}
+    </div>
+  );
 }

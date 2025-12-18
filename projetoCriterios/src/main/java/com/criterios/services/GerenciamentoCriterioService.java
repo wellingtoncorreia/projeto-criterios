@@ -1,3 +1,4 @@
+// projetoCriterios/src/main/java/com/criterios/services/GerenciamentoCriterioService.java
 package com.criterios.services;
 
 import com.criterios.dto.CapacidadeImportDTO;
@@ -7,12 +8,13 @@ import com.criterios.repository.CapacidadeRepository;
 import com.criterios.repository.CriterioRepository;
 import com.criterios.repository.DisciplinaRepository;
 import com.criterios.repository.NivelAvaliacaoRepository;
-import com.criterios.repository.EstruturaDisciplinaRepository; // Necessário
+import com.criterios.repository.EstruturaTemplateRepository; 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.lang.Math;
 
 @Service
 @RequiredArgsConstructor
@@ -22,11 +24,11 @@ public class GerenciamentoCriterioService {
     private final CapacidadeRepository capacidadeRepository;
     private final DisciplinaRepository disciplinaRepository;
     private final NivelAvaliacaoRepository nivelRepository;
-    private final EstruturaDisciplinaRepository estruturaDisciplinaRepository; // Repositório adicionado
+    private final EstruturaTemplateRepository estruturaTemplateRepository; 
+    private final EstruturaTemplateService estruturaTemplateService; 
 
     @Transactional
     public Criterio criarCriterio(Long capacidadeId, String descricao, TipoCriterio tipo) {
-        // Este é um método de "adição manual" ao template da Capacidade
         Capacidade capacidade = capacidadeRepository.findById(capacidadeId)
                 .orElseThrow(() -> new RuntimeException("Capacidade não encontrada"));
 
@@ -38,7 +40,6 @@ public class GerenciamentoCriterioService {
         return criterioRepository.save(criterio);
     }
 
-    // [AJUSTE DE VERSIONAMENTO] A validação é feita no TEMPLATE
     public boolean validarRegraMinimoCritico(Long disciplinaTemplateId) {
         List<Capacidade> capacidades = capacidadeRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
         
@@ -56,32 +57,23 @@ public class GerenciamentoCriterioService {
 
     @Transactional
     public void salvarImportacaoEmMassa(Long disciplinaTemplateId, List<CapacidadeImportDTO> dados) {
-        // 1. Busca a disciplina (Template)
         Disciplina disciplinaTemplate = disciplinaRepository.findById(disciplinaTemplateId)
                 .orElseThrow(() -> new RuntimeException("Disciplina (Template) não encontrada"));
 
-        // 2. [REPLACE] Encontra e Deleta TODA a estrutura TEMPLATE antiga.
-        EstruturaDisciplina estruturaAntiga = estruturaDisciplinaRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
+        // 1. [LIMPEZA] Encontra e Deleta TODA a estrutura TEMPLATE antiga.
+        EstruturaTemplate estruturaAntiga = estruturaTemplateRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
         if (estruturaAntiga != null) {
-            // Remove a estrutura antiga e seus filhos (Capacidades, Critérios, Níveis) via cascade
-            estruturaDisciplinaRepository.delete(estruturaAntiga);
+            estruturaTemplateRepository.delete(estruturaAntiga);
         }
         
-        // 3. RECRIAR O NOVO TEMPLATE DA ESTRUTURA (Com novo ID gerenciado)
-        EstruturaDisciplina novaEstruturaTemplate = new EstruturaDisciplina();
-        // Vincula a nova estrutura ao ID do Template para que seja a única ativa
-        novaEstruturaTemplate.setDisciplinaTemplateId(disciplinaTemplateId);
-        novaEstruturaTemplate.setNomeDisciplina(disciplinaTemplate.getNome());
-        novaEstruturaTemplate.setSiglaDisciplina(disciplinaTemplate.getSigla());
-
-        // [CORREÇÃO CRÍTICA] Salva o novo objeto EstruturaDisciplina para que o JPA o gerencie e atribua um novo ID.
-        novaEstruturaTemplate = estruturaDisciplinaRepository.save(novaEstruturaTemplate); 
+        // 2. RECRIAR O NOVO TEMPLATE DA ESTRUTURA 
+        EstruturaTemplate novaEstruturaTemplate = estruturaTemplateService.criarTemplateInicial(disciplinaTemplateId, disciplinaTemplate);
         
-        // 4. Salva a nova estrutura de Capacidades e Critérios
+        // 3. Salva a nova estrutura de Capacidades e Critérios
         for (CapacidadeImportDTO capDTO : dados) {
             Capacidade cap = new Capacidade();
-            // [CORREÇÃO] Liga a Capacidade ao novo objeto gerenciado
-            cap.setEstruturaDisciplina(novaEstruturaTemplate); 
+            // Liga a Capacidade ao novo objeto Template
+            cap.setEstruturaTemplate(novaEstruturaTemplate); 
             
             cap.setDescricao(capDTO.getDescricao());
             cap.setTipo(capDTO.getTipo());
@@ -99,36 +91,33 @@ public class GerenciamentoCriterioService {
             }
         }
         
-        // 5. Gera os Níveis para a nova Estrutura (usando o novo ID)
-        // Isso é crucial para que a validação de níveis do front-end funcione imediatamente.
+        // 4. Gera os Níveis para a nova Estrutura (usando o novo ID)
         gerarNiveisAutomaticos(novaEstruturaTemplate.getId());
     }
 
-    // [AJUSTE DE VERSIONAMENTO] Gera Níveis para o Template
     @Transactional
-    public void gerarNiveisAutomaticos(Long estruturaDisciplinaId) { // Recebe ID da Estrutura (Snapshot ou Template)
+    public void gerarNiveisAutomaticos(Long estruturaTemplateId) { 
         
         // 1. Limpa níveis antigos
-        nivelRepository.deleteByEstruturaDisciplinaId(estruturaDisciplinaId); 
+        nivelRepository.deleteByTemplateId(estruturaTemplateId); 
 
-        // 2. Conta totais (Usando o método que agora existe no CriterioRepository)
-        long totalCriticos = criterioRepository.countByEstruturaDisciplinaAndTipo(estruturaDisciplinaId, TipoCriterio.CRITICO);
-        long totalDesejaveis = criterioRepository.countByEstruturaDisciplinaAndTipo(estruturaDisciplinaId, TipoCriterio.DESEJAVEL);
+        // 2. Conta totais 
+        long totalCriticos = criterioRepository.countByTemplateIdAndTipo(estruturaTemplateId, TipoCriterio.CRITICO);
+        long totalDesejaveis = criterioRepository.countByTemplateIdAndTipo(estruturaTemplateId, TipoCriterio.DESEJAVEL);
 
         if (totalCriticos == 0) return;
 
-        // Placeholder para o link correto (o objeto que acabou de ser criado)
-        EstruturaDisciplina estruturaPlaceholder = new EstruturaDisciplina();
-        estruturaPlaceholder.setId(estruturaDisciplinaId);
+        EstruturaTemplate templatePlaceholder = new EstruturaTemplate();
+        templatePlaceholder.setId(estruturaTemplateId);
         
         // 3. Gera de 5 a 100
         for (int nivel = 5; nivel <= 100; nivel += 5) {
             NivelAvaliacao novoNivel = new NivelAvaliacao();
-            novoNivel.setEstruturaDisciplina(estruturaPlaceholder); 
+            // Liga ao Template
+            novoNivel.setEstruturaTemplate(templatePlaceholder); 
             novoNivel.setNivel(nivel);
             
             if (nivel <= 50) {
-                // FASE 1: Críticos (Proporcional)
                 double proporcao = (double) nivel / 50.0;
                 int qtdCriticos = (int) Math.ceil(proporcao * totalCriticos);
                 
@@ -137,7 +126,6 @@ public class GerenciamentoCriterioService {
                 novoNivel.setMinCriticos(qtdCriticos);
                 novoNivel.setMinDesejaveis(0);
             } else {
-                // FASE 2: Críticos Completos + Desejáveis
                 novoNivel.setMinCriticos((int) totalCriticos); 
 
                 if (totalDesejaveis > 0) {

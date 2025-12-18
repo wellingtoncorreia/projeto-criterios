@@ -1,3 +1,4 @@
+// projetoCriterios/src/main/java/com/criterios/services/ArquivoService.java
 package com.criterios.services;
 
 import com.criterios.dto.CritItemDTO;
@@ -23,8 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -36,25 +35,26 @@ public class ArquivoService {
     private final DisciplinaRepository disciplinaRepository;
     private final CapacidadeRepository capacidadeRepository;
     private final CriterioRepository criterioRepository;
-    private final EstruturaDisciplinaRepository estruturaDisciplinaRepository; // Adicionado
+    private final SnapshotDisciplinaRepository snapshotDisciplinaRepository; // [CORRIGIDO] Novo repositório para Snapshot
 
     // --- 1. GERAÇÃO DE EXCEL (Boletim) ---
-    public byte[] gerarBoletimExcel(Long alunoId, Long estruturaDisciplinaId) throws IOException { // CORRIGIDO: Recebe EstruturaDisciplinaId
+    public byte[] gerarBoletimExcel(Long alunoId, Long snapshotDisciplinaId) throws IOException { // [CORRIGIDO] Recebe snapshotDisciplinaId
         Aluno aluno = alunoRepository.findById(alunoId).orElseThrow(() -> new RuntimeException("Aluno não encontrado"));
         
-        // [AJUSTE VERSIONAMENTO] Busca o Snapshot da Estrutura para pegar os metadados (Nome/Sigla)
-        EstruturaDisciplina estrutura = estruturaDisciplinaRepository.findById(estruturaDisciplinaId)
+        // [CORRIGIDO] Busca o Snapshot da Estrutura para pegar os metadados (Nome/Sigla)
+        SnapshotDisciplina snapshot = snapshotDisciplinaRepository.findById(snapshotDisciplinaId)
             .orElseThrow(() -> new RuntimeException("Estrutura da Disciplina (Snapshot) não encontrada."));
         
-        // [CORRIGIDO] Usa o novo método de busca por Snapshot
-        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, estruturaDisciplinaId);
+        // [CORRIGIDO] Usa o método de busca por Snapshot (o repositório foi corrigido para usar o campo certo)
+        List<Avaliacao> avaliacoes = avaliacaoRepository.findByAlunoAndEstruturaDisciplina(alunoId, snapshotDisciplinaId);
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             
             // Usa metadados do Snapshot
-            String nomeDisciplina = estrutura.getNomeDisciplina() != null ? estrutura.getNomeDisciplina() : "N/A";
-            String siglaDisciplina = estrutura.getSiglaDisciplina() != null ? estrutura.getSiglaDisciplina() : "N_A";
-
+            String nomeDisciplina = snapshot.getNomeDisciplina() != null ? snapshot.getNomeDisciplina() : "N/A";
+            String siglaDisciplina = snapshot.getSiglaDisciplina() != null ? snapshot.getSiglaDisciplina() : "N_A";
+            // ... (restante da lógica de criação do Excel)
+            
             String safeName = (aluno.getNome() + "_" + siglaDisciplina).replaceAll("[^a-zA-Z0-9]", "_");
             if (safeName.length() > 30) safeName = safeName.substring(0, 30);
             
@@ -104,12 +104,12 @@ public class ArquivoService {
         }
     }
 
-    // --- 2. IMPORTAÇÃO DE ALUNOS (PDF) ---
+    // ... (Métodos de importação de Alunos e Critérios permanecem inalterados, pois usam repositórios genéricos)
     @Transactional
     public String importarAlunosViaPdf(MultipartFile file, Long turmaId) throws IOException {
         Turma turma = turmaRepository.findById(turmaId)
                 .orElseThrow(() -> new RuntimeException("Turma não encontrada"));
-
+        // ... (restante da lógica de importação de alunos)
         try (PDDocument document = PDDocument.load(file.getInputStream())) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true); 
@@ -157,7 +157,6 @@ public class ArquivoService {
         }
     }
 
-    // --- 3. IMPORTAÇÃO DE CRITÉRIOS (Lista Simples) ---
     @Transactional
     public String importarCriteriosViaArquivo(MultipartFile file, Long capacidadeId) throws IOException {
         Capacidade capacidade = capacidadeRepository.findById(capacidadeId)
@@ -196,7 +195,7 @@ public class ArquivoService {
     public EstruturaImportacaoDTO preProcessarEstrutura(MultipartFile file, Long disciplinaId) throws IOException {
         Disciplina disciplina = disciplinaRepository.findById(disciplinaId)
                 .orElseThrow(() -> new RuntimeException("Disciplina não encontrada"));
-
+        // ... (restante da lógica de pré-processamento)
         List<CapItemDTO> capacidades = new ArrayList<>();
         
         if (file.getOriginalFilename() != null && 
@@ -214,8 +213,7 @@ public class ArquivoService {
         return dto;
     }
     
-    // --- MÉTODOS PRIVADOS DE PARSING PARA DTO ---
-
+    // ... (Métodos auxiliares de parsing)
     private List<CapItemDTO> parseCsvEstruturaToDTO(MultipartFile file) throws IOException {
         List<CapItemDTO> capacidades = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(
@@ -264,7 +262,6 @@ public class ArquivoService {
         }
     }
     
-    // Lógica compartilhada de pre-processamento (preenche a lista de CapItemDTO)
     private void processarCapacidadeCritItem(String colCapacidade, String colCriterio, List<CapItemDTO> capacidades) {
         
         CapItemDTO ultimaCapacidade = capacidades.isEmpty() ? null : capacidades.get(capacidades.size() - 1);
@@ -303,7 +300,6 @@ public class ArquivoService {
         }
     }
     
-    // --- Métodos Auxiliares de Salvar (Mantidos) ---
     private boolean salvarCriterioSeNaoExistir(String descricao, TipoCriterio tipo, Capacidade capacidade) {
         boolean existe = false;
         
