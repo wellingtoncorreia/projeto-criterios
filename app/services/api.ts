@@ -4,13 +4,14 @@ const api = axios.create({
   baseURL: 'http://localhost:8080/api',
 });
 
-// --- ADICIONE ESTE BLOCO (Interceptador de Requisição) ---
+// --- INTERCEPTOR DE REQUISIÇÃO ---
 api.interceptors.request.use(
   (config) => {
-    // Tenta pegar o token do localStorage
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      // Se tiver token, injeta no cabeçalho Authorization
+      // CORREÇÃO CRÍTICA: Procura em ambos os storages
+      // Isso resolve o problema de salvar em um lugar e buscar no outro
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -21,34 +22,29 @@ api.interceptors.request.use(
     return Promise.reject(error);
   }
 );
-// ---------------------------------------------------------
 
+// --- INTERCEPTOR DE RESPOSTA ---
 api.interceptors.response.use(
   response => response,
   error => {
-    console.error('Erro na API:', {
-      status: error.response?.status,
-      message: error.response?.data?.message,
-      data: error.response?.data,
-      url: error.config?.url
-    });
-    
-    // Apenas deslogar se o token for inválido/expirado (401 em endpoints de autenticação)
-    // Não deslogar em 403 (permissão negada) pois pode ser erro de negócio
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      if (token) {
-        // Token inválido/expirado - deslogar
-        localStorage.removeItem('token'); 
-        localStorage.removeItem('user');
-        localStorage.removeItem('role');
+      console.error("API: Erro 401 detectado no interceptor global.");
 
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+      // Limpeza de sessão
+      sessionStorage.removeItem('token'); 
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('role');
+      localStorage.removeItem('token'); // Adicionei para garantir
+
+      // --- COMENTEI O REDIRECT FORÇADO PARA PARAR DE "PISCAR" A TELA ---
+      // Enquanto estamos debugando, isso impede que você seja expulso.
+      // Quando tudo estiver estável, você pode descomentar.
+      /*
+      if (!window.location.pathname.includes('/login')) {
+         window.location.href = '/login';
       }
+      */
     }
-    
     return Promise.reject(error);
   }
 );

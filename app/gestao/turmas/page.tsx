@@ -9,7 +9,6 @@ import { useEffect, useState, useCallback } from 'react';
 import api from '@/app/services/api';
 import Swal from 'sweetalert2'; 
 
-// Interface local para controlar o estado no modal
 interface DisciplinaOpcao extends Disciplina {
   snapshotId: number | null;
   status: 'PRONTO' | 'SEM_SNAPSHOT' | 'CARREGANDO';
@@ -21,7 +20,7 @@ export default function TurmasPage() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  // --- Estados do Modal de Seleção ---
+  // --- Estados do Modal ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTurma, setSelectedTurma] = useState<Turma | null>(null);
   const [disciplinasModal, setDisciplinasModal] = useState<DisciplinaOpcao[]>([]);
@@ -29,14 +28,20 @@ export default function TurmasPage() {
 
   // --- Carregamento de Turmas ---
   async function carregarTurmas() {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    // CORREÇÃO: Busca token híbrido
+    const token = typeof window !== 'undefined' 
+        ? (localStorage.getItem('token') || sessionStorage.getItem('token')) 
+        : null;
+
     if (!token) {
       setLoading(false);
-      return;
+      return; 
     }
       
     try {
-      const res = await api.get('/turmas');
+      // Injeta token manualmente para garantir
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await api.get('/turmas', config);
       setTurmas(res.data);
     } catch (err) {
       console.error(err);
@@ -48,7 +53,9 @@ export default function TurmasPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-        setUserRole(localStorage.getItem('role'));
+        // Busca role de ambos
+        const role = localStorage.getItem('role') || sessionStorage.getItem('role');
+        setUserRole(role);
     }
     carregarTurmas();
   }, []);
@@ -68,7 +75,10 @@ export default function TurmasPage() {
 
     if (result.isConfirmed) {
       try {
-        await api.delete(`/turmas/${id}`);
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        
+        await api.delete(`/turmas/${id}`, config);
         await Swal.fire('Excluída!', 'A turma foi removida com sucesso.', 'success');
         carregarTurmas();
       } catch (error) {
@@ -79,7 +89,6 @@ export default function TurmasPage() {
   }
 
   // --- Lógica do Modal de Avaliação ---
-  
   const abrirModalAvaliacao = useCallback(async (turma: Turma) => {
     setSelectedTurma(turma);
     setIsModalOpen(true);
@@ -87,7 +96,10 @@ export default function TurmasPage() {
     setDisciplinasModal([]);
 
     try {
-        const resDiscs = await api.get<Disciplina[]>(`/turmas/${turma.id}/disciplinas`);
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+
+        const resDiscs = await api.get<Disciplina[]>(`/turmas/${turma.id}/disciplinas`, config);
         const disciplinasBasicas = resDiscs.data;
 
         const disciplinasVerificadas = await Promise.all(disciplinasBasicas.map(async (d) => {
@@ -97,7 +109,7 @@ export default function TurmasPage() {
                 snapId = turma.estruturaSnapshotId;
             } else {
                 try {
-                    const resSnap = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
+                    const resSnap = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`, config);
                     snapId = resSnap.data;
                 } catch {
                     snapId = null;
@@ -122,14 +134,10 @@ export default function TurmasPage() {
     }
   }, []);
 
-  // [CORREÇÃO] Adicionado parâmetro discId e ajustada a URL
   const handleNavegarAvaliacao = (turmaId: number, snapshotId: number, discId: number) => {
       setIsModalOpen(false);
-      // Agora inclui &discId=...
       router.push(`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${snapshotId}&discId=${discId}`);
   };
-
-  // --- Renderização ---
 
   const isGestor = userRole === 'GESTOR';
 
@@ -292,7 +300,6 @@ export default function TurmasPage() {
                                     </div>
 
                                     <button
-                                        // [CORREÇÃO] Passando o disc.id para a função de navegação
                                         onClick={() => disc.snapshotId && handleNavegarAvaliacao(selectedTurma.id, disc.snapshotId, disc.id)}
                                         disabled={!disc.snapshotId}
                                         className={`px-4 py-2 rounded text-sm font-medium transition

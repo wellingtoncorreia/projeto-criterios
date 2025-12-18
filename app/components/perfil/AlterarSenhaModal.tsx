@@ -23,10 +23,13 @@ export default function AlterarSenhaModal({ onClose }: Props) {
     setLoading(true);
 
     try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
       await api.post('/admin/perfil/alterar-senha', {
         senhaAtual,
         novaSenha
-      });
+      }, config);
       
       Swal.fire({
         title: 'Sucesso!',
@@ -34,9 +37,12 @@ export default function AlterarSenhaModal({ onClose }: Props) {
         icon: 'success',
         confirmButtonColor: '#10b981'
       }).then(() => {
-        // Força logout após alteração de senha
-        localStorage.clear();
-        window.location.href = '/login'; 
+        // CORREÇÃO: Limpeza completa
+        if (typeof window !== 'undefined') {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/login'; 
+        }
       });
     } catch (error: any) {
       const msg = error.response?.data || 'Erro ao alterar senha. Verifique a senha atual.';

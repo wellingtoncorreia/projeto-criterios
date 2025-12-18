@@ -12,29 +12,37 @@ export default function Navbar() {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
   const [showModal, setShowModal] = useState(false);
-  // [NOVO] Estado para controlar se o componente já montou no cliente
   const [isMounted, setIsMounted] = useState(false); 
 
-  // O useEffect agora depende do 'pathname' para rodar a cada navegação
+  // --- FUNÇÕES AUXILIARES DE SEGURANÇA ---
+  const getToken = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('token') || sessionStorage.getItem('token');
+  };
+
+  const getUserInfo = (key: string) => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(key) || sessionStorage.getItem(key);
+  };
+
   useEffect(() => {
-    // Garante que a leitura do localStorage só acontece após a montagem (no cliente)
     setIsMounted(true); 
     
     if (typeof window !== 'undefined') {
-      const storedName = localStorage.getItem('user');
-      const storedRole = localStorage.getItem('role');
-      const storedToken = localStorage.getItem('token');
+      // CORREÇÃO: Busca dados de qualquer storage disponível
+      const storedName = getUserInfo('user');
+      const storedRole = getUserInfo('role');
+      const storedToken = getToken();
       
-      // Se estiver na tela de login, limpa o estado interno temporariamente
+      // Se estiver na tela de login, limpa o estado visual
       if (pathname === '/login') {
           setUserName('');
           setUserRole('');
       } else {
-          // Lê os dados recém-salvos após o login
           if (storedName) setUserName(storedName);
           if (storedRole) setUserRole(storedRole);
           
-          // Se não for a página de login E não tiver token, força o redirecionamento.
+          // Se não for login e não tiver token, redireciona
           if (!storedToken && !pathname.startsWith('/login')) {
               router.push('/login');
           }
@@ -43,16 +51,19 @@ export default function Navbar() {
   }, [pathname, router]); 
 
   const handleLogout = () => {
-    localStorage.clear();
+    // CORREÇÃO: Limpa ambos os storages para evitar conflitos
+    if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+    }
     router.push('/login');
   };
 
-  // [CORRIGIDO] Condicional de Renderização para SSR e Cliente
-  // 1. Se não montou no cliente (está em SSR), não renderiza para evitar o crash.
+  // Evita renderização no servidor (SSR)
   if (!isMounted) return null;
     
-  // 2. Se for a página de login OU o token estiver ausente, não renderiza a navbar.
-  if (pathname === '/login' || !localStorage.getItem('token')) return null;
+  // Se for login ou não tiver token, não mostra a barra
+  if (pathname === '/login' || !getToken()) return null;
 
 
   const links = [
@@ -95,7 +106,6 @@ export default function Navbar() {
         {/* Área de Perfil */}
         <div className="flex items-center gap-4 pl-6 border-l border-gray-200">
           
-          {/* Botão de Alterar Senha */}
           <button 
             onClick={() => setShowModal(true)} 
             title="Alterar Senha" 
@@ -104,7 +114,6 @@ export default function Navbar() {
             <Settings size={20} />
           </button>
           
-          {/* Info e Avatar */}
           <div className="flex items-center gap-3">
             <div className="text-right hidden md:block">
               <p className="text-xs font-bold text-gray-800">{firstName}</p>
@@ -115,7 +124,6 @@ export default function Navbar() {
             </div>
           </div>
           
-          {/* Botão de Logout */}
           <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full">
             <LogOut size={20} />
           </button>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation'; 
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell 
@@ -10,7 +11,6 @@ import api from '@/app/services/api';
 import Swal from 'sweetalert2'; 
 import { Turma } from '@/app/types';
 
-// --- Tipagens ---
 interface Boletim { 
   nomeAluno: string; 
   nivelAlcancado: number; 
@@ -19,52 +19,75 @@ interface Boletim {
 const COLORS_PIE = ['#10b981', '#ef4444']; 
 
 export default function DashboardPage() {
+  const router = useRouter(); 
+
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [selectedTurmaId, setSelectedTurmaId] = useState<number | string>("");
   const [boletins, setBoletins] = useState<Boletim[]>([]);
   const [loadingDados, setLoadingDados] = useState(false);
   const [loadingFiltros, setLoadingFiltros] = useState(true);
 
-  // Encontra a turma selecionada e extrai os metadados do Snapshot
   const selectedTurma = turmas.find(t => t.id === Number(selectedTurmaId));
   const estruturaSnapshotId = selectedTurma?.estruturaSnapshotId;
-
   const nomeDisciplinaAtual = selectedTurma?.nomeDisciplina || "...";
   
-  // 1. Carregar Turmas do Usuário
+  // Função auxiliar robusta para pegar o token
+  const getToken = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('token') || sessionStorage.getItem('token');
+  };
+
+  // 1. Carregar Turmas e Validar Sessão
   useEffect(() => {
-    if (typeof window !== 'undefined' && !localStorage.getItem('token')) {
-        setLoadingFiltros(false);
+    const token = getToken();
+
+    // Se não tiver token em lugar nenhum, redireciona
+    if (!token) {
+        router.push('/login');
         return; 
     }
       
-    // [CORREÇÃO] Rota alterada de '/turmas/minhas' para '/turmas'
-    // O backend já filtra pelo usuário logado na raiz '/api/turmas'
-    api.get<Turma[]>('/turmas')
+    // Configuração manual do Header para garantir o envio
+    const authConfig = {
+        headers: { Authorization: `Bearer ${token}` }
+    };
+
+    api.get<Turma[]>('/turmas', authConfig)
     .then(res => {
         setTurmas(res.data);
         if (res.data.length > 0) setSelectedTurmaId(res.data[0].id);
     }).catch(err => {
-        console.error(err);
-        if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.error("Erro ao carregar turmas:", err);
+        
+        // Se a API recusar o token (expirado/inválido), limpa e redireciona
+        if (err.response?.status === 401 || err.response?.status === 403) {
+            localStorage.removeItem('token');
+            sessionStorage.removeItem('token');
+            router.push('/login');
+        } else {
             Swal.fire('Erro', 'Não foi possível carregar a lista de turmas.', 'error'); 
         }
     }).finally(() => setLoadingFiltros(false));
-  }, []);
+  }, [router]);
   
-  // 2. Carregar Dados do Boletim baseados no Snapshot
+  // 2. Carregar Dados do Boletim
   useEffect(() => {
-    if (!selectedTurmaId || !estruturaSnapshotId) { 
+    const token = getToken();
+
+    // Se faltar dados essenciais ou token, não faz a requisição
+    if (!selectedTurmaId || !estruturaSnapshotId || !token) { 
         setBoletins([]);
         return;
     }
       
     setLoadingDados(true);
     
-    // [IMPORTANTE] Usa estruturaDisciplinaId conforme esperado pelo controller
-    api.get<Boletim[]>(`/avaliacoes/boletim/turma/${selectedTurmaId}`, {
+    const authConfig = {
+        headers: { Authorization: `Bearer ${token}` },
         params: { estruturaDisciplinaId: estruturaSnapshotId } 
-    })
+    };
+
+    api.get<Boletim[]>(`/avaliacoes/boletim/turma/${selectedTurmaId}`, authConfig)
     .then(res => setBoletins(res.data))
     .catch(err => {
         console.error(err);
@@ -74,11 +97,10 @@ export default function DashboardPage() {
 
   }, [selectedTurmaId, estruturaSnapshotId]);
 
-  // --- Cálculos de KPIs ---
+  // --- Cálculos e Renderização ---
   const totalAlunos = boletins.length;
-  // A média e aprovação agora são baseadas no nívelFinal calculado pelo Snapshot
   const mediaGeral = totalAlunos > 0 ? (boletins.reduce((acc, b) => acc + b.nivelAlcancado, 0) / totalAlunos).toFixed(1) : "0";
-  const aprovados = boletins.filter(b => b.nivelAlcancado > 0).length; // Considera aprovado quem atingiu algum nível
+  const aprovados = boletins.filter(b => b.nivelAlcancado > 0).length;
   const retidos = totalAlunos - aprovados;
 
   const dataStatus = [
@@ -86,7 +108,6 @@ export default function DashboardPage() {
     { name: 'Sem Nível (0)', value: retidos },
   ];
 
-  // Agrupamento por faixas de nível
   const faixas = { 'Nível 0': 0, 'Nível 1': 0, 'Nível 2': 0, 'Nível 3+': 0 };
   boletins.forEach(b => {
     if (b.nivelAlcancado === 0) faixas['Nível 0']++;
@@ -111,7 +132,6 @@ export default function DashboardPage() {
         <p className="text-gray-500">Indicadores baseados no Snapshot imutável da Turma.</p>
       </div>
 
-      {/* Filtros de Turma */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row gap-4 items-center">
         <div className="flex items-center gap-2 text-indigo-600 font-semibold px-2 border-r pr-4 border-gray-200"><Filter size={20} /> Filtros:</div>
         
@@ -143,7 +163,7 @@ export default function DashboardPage() {
         <div className="text-center py-20 text-gray-400">Processando indicadores de desempenho...</div>
       ) : totalAlunos === 0 ? (
         !estruturaSnapshotId ? (
-             <div className="text-center py-20 bg-white rounded-xl border border-dashed border-red-300 text-red-500">
+              <div className="text-center py-20 bg-white rounded-xl border border-dashed border-red-300 text-red-500">
                 <AlertTriangle size={32} className="mx-auto mb-2"/>
                 <p>A Turma selecionada não possui uma estrutura de avaliação (Snapshot) gerada.</p>
                 <p className="text-sm mt-2 text-red-400">Vá em "Gestão de Turmas" e crie o Snapshot para iniciar as avaliações.</p>
