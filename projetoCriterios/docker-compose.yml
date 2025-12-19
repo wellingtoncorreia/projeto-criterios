@@ -1,0 +1,32 @@
+services:
+  mysql-criterios:
+    image: mysql:8.0
+    container_name: mysql-criterios
+    environment:
+      MYSQL_ROOT_PASSWORD: passwd
+      MYSQL_DATABASE: db_criterios
+    ports:
+      - "3307:3306"
+    networks:
+      - app-network
+    command: --default-authentication-plugin=mysql_native_password
+
+  app:
+    build: .
+    container_name: app-criterios
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql-criterios
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-criterios:3306/db_criterios?createDatabaseIfNotExist=true&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=passwd
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

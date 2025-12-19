@@ -144,6 +144,7 @@ export interface ChartDataFaixa {
 export interface ChartDataStatus {
   name: string;
   value: number;
+  [key: string]: any;
 }
 
 // --- Mantenha os tipos existentes (Usuario, Disciplina, etc) e ADICIONE/ATUALIZE estes: ---
