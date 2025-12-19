@@ -24,14 +24,14 @@ public class SnapshotService {
         Disciplina template = disciplinaRepository.findById(disciplinaTemplateId)
                 .orElseThrow(() -> new RuntimeException("Disciplina (Template) não encontrada."));
 
-        // [CORREÇÃO] O Repositório retorna o objeto direto, então removemos o .orElse(null)
+        // Busca estrutura ativa
         EstruturaTemplate estruturaTemplate = estruturaTemplateRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
         
         if (estruturaTemplate == null) {
             throw new RuntimeException("A disciplina Template não possui Estrutura ATIVA. Importe critérios primeiro.");
         }
         
-        // 2. Cria o SnapshotDisciplina
+        // 1. Cria o SnapshotDisciplina (Cabeçalho)
         SnapshotDisciplina snapshot = new SnapshotDisciplina();
         snapshot.setDisciplinaTemplateId(template.getId());
         snapshot.setNomeDisciplina(template.getNome());
@@ -39,7 +39,7 @@ public class SnapshotService {
         
         snapshot = snapshotDisciplinaRepository.save(snapshot); 
 
-        // 3. Busca Capacidades do TEMPLATE
+        // 2. Busca Capacidades do TEMPLATE para copiar
         List<Capacidade> capacidadesTemplate = capacidadeRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
         
         if (capacidadesTemplate.isEmpty()) {
@@ -51,12 +51,13 @@ public class SnapshotService {
             capSnapshot.setDescricao(capTemplate.getDescricao());
             capSnapshot.setTipo(capTemplate.getTipo());
             
+            // CORREÇÃO: Vincula APENAS ao Snapshot, removendo o vínculo com o Template volátil
             capSnapshot.setSnapshotDisciplina(snapshot); 
-            capSnapshot.setEstruturaTemplate(estruturaTemplate);
+            // capSnapshot.setEstruturaTemplate(estruturaTemplate); // <--- LINHA REMOVIDA
             
             capSnapshot = capacidadeRepository.save(capSnapshot);
 
-            // 4. Busca Critérios do TEMPLATE
+            // 3. Copia Critérios
             List<Criterio> criteriosTemplate = criterioRepository.findByCapacidadeTemplateId(capTemplate.getId());
             
             for (Criterio critTemplate : criteriosTemplate) {
@@ -69,7 +70,7 @@ public class SnapshotService {
             }
         }
         
-        // 5. Busca e copia Níveis de Avaliação
+        // 4. Copia Níveis de Avaliação
         List<NivelAvaliacao> niveisTemplate = nivelRepository.findByDisciplinaTemplateId(disciplinaTemplateId);
         
         for (NivelAvaliacao nivelTemplate : niveisTemplate) {
@@ -81,8 +82,10 @@ public class SnapshotService {
             nivelSnapshot.setSigla(nivelTemplate.getSigla());
             nivelSnapshot.setDescricao(nivelTemplate.getDescricao());
             
+            // CORREÇÃO: Vincula APENAS ao Snapshot
             nivelSnapshot.setSnapshotDisciplina(snapshot); 
-            nivelSnapshot.setEstruturaTemplate(estruturaTemplate);
+            // nivelSnapshot.setEstruturaTemplate(estruturaTemplate); // <--- LINHA REMOVIDA
+            
             nivelRepository.save(nivelSnapshot);
         }
 

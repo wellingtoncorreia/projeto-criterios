@@ -1,566 +1,342 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { CheckCircle, XCircle, User, ArrowLeft, AlertCircle, Download, RotateCcw, Lock, Unlock, FileBarChart, Users, BookOpen, Loader2, Zap, ShieldCheck } from "lucide-react";
+import { useState, useRef, useEffect, use } from "react";
+import { useSearchParams } from "next/navigation";
+import { 
+    CheckCircle, XCircle, User, ArrowLeft, Download, 
+    RotateCcw, Lock, Unlock, FileBarChart, Users, BookOpen, 
+    Loader2, Zap, ShieldCheck, RefreshCw, Menu, MoreVertical, 
+    ChevronDown, Filter 
+} from "lucide-react";
 import Link from "next/link";
-import api from "@/app/services/api";
-import Swal from 'sweetalert2';
+import { useAvaliacaoTurma } from "@/app/hooks/useAvaliacaoTurma";
 
-import { Turma, Aluno, Capacidade, Criterio, Disciplina, TurmaResponseDTO } from "@/app/types";
-
-interface ResultadoBoletimDTO {
-  nomeAluno: string;
-  nomeDisciplina: string;
-  qtdCriticosAtendidos: number;
-  qtdDesejaveisAtendidos: number;
-  totalCriticosDisciplina: number;
-  totalDesejaveisDisciplina: number;
-  nivelAlcancado: number;
-  percentualConclusao: number;
+interface PageProps {
+  params: Promise<{ id: string }>;
 }
 
-interface AvaliacaoEstado {
-  atendeu: boolean | null;
-  obs: string;
-  finalizada: boolean | undefined;
-}
-
-interface DisciplinaDisponivel extends Disciplina {
-  avaliacaoId: number; // Snapshot ID ou Template ID
-  isPrincipal: boolean;
-}
-
-export default function AvaliacaoTurmaPage() {
-  const params = useParams();
+export default function AvaliacaoTurmaPage({ params }: PageProps) {
+  const { id: turmaId } = use(params);
   const searchParams = useSearchParams();
-  const router = useRouter();
-
-  const turmaId = params?.id as string;
   const initialEstruturaId = searchParams.get('estruturaId');
   const initialDiscId = searchParams.get('discId');
 
-  const [turma, setTurma] = useState<Turma | null>(null);
-  const [alunos, setAlunos] = useState<Aluno[]>([]);
-  const [loading, setLoading] = useState(true);
+  // --- HOOK COM A LÓGICA ---
+  const {
+      turma, alunos, loading, capacidades,
+      selection, avaliacao, actions
+  } = useAvaliacaoTurma(turmaId, initialEstruturaId, initialDiscId);
 
-  const [disciplinasDisponiveis, setDisciplinasDisponiveis] = useState<DisciplinaDisponivel[]>([]);
-  const [selectedEstruturaId, setSelectedEstruturaId] = useState<string | null>(initialEstruturaId ?? null);
-  const [selectedDiscId, setSelectedDiscId] = useState<string | null>(initialDiscId ?? null);
+  // Estados apenas de UI (Menus e Sidebars)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
 
-  const [alunoSelecionado, setAlunoSelecionado] = useState<Aluno | null>(null);
-  const [capacidades, setCapacidades] = useState<Capacidade[]>([]);
-  const [avaliacoesState, setAvaliacoesState] = useState<Record<number, AvaliacaoEstado>>({});
-
-  const [avaliacaoFinalizada, setAvaliacaoFinalizada] = useState(false);
-  const [resultadoFinal, setResultadoFinal] = useState<ResultadoBoletimDTO | null>(null);
-  const [finalizando, setFinalizando] = useState(false);
-
-  const todosCriteriosIds = useMemo(() => capacidades.flatMap(cap => cap.criterios ? cap.criterios.map(c => c.id) : []), [capacidades]);
-
-  // --- Helpers ---
-  const disciplinaSelecionada = useMemo(() => {
-    if (selectedDiscId) {
-        return disciplinasDisponiveis.find(d => d.id.toString() === selectedDiscId);
-    }
-    if (!selectedEstruturaId) return undefined;
-    let disc = disciplinasDisponiveis.find(d => d.avaliacaoId.toString() === selectedEstruturaId);
-    if (!disc) disc = disciplinasDisponiveis.find(d => d.id.toString() === selectedEstruturaId);
-    return disc;
-  }, [disciplinasDisponiveis, selectedEstruturaId, selectedDiscId]);
-
-  const templateIdSelecionado = disciplinaSelecionada?.id?.toString() ?? null;
-
-  const isSnapshotReady = useMemo(() => {
-    if (!disciplinaSelecionada || !selectedEstruturaId) return false;
-    return disciplinaSelecionada.id.toString() !== selectedEstruturaId;
-  }, [disciplinaSelecionada, selectedEstruturaId]);
-
-  // --- API calls ---
-  const carregarTurmaEAuxiliares = useCallback(async () => {
-    if (!turmaId) return;
-    setLoading(true);
-    try {
-      const [resTurma, resAlunos, resDiscs] = await Promise.all([
-        api.get<Turma>(`/turmas/${turmaId}`),
-        api.get<Aluno[]>(`/turmas/${turmaId}/alunos`),
-        api.get<Disciplina[]>(`/turmas/${turmaId}/disciplinas`),
-      ]);
-
-      const turmaData = resTurma.data;
-      setTurma(turmaData);
-
-      const alunosData = Array.isArray(resAlunos.data) ? resAlunos.data : [];
-      setAlunos(alunosData);
-
-      const defaultSnapshotId = turmaData.estruturaSnapshotId || 0;
-      
-      const initialDisciplinasMapeadas: DisciplinaDisponivel[] = Array.isArray(resDiscs.data) ? resDiscs.data.map(d => ({
-        ...d,
-        isPrincipal: d.id === turmaData.disciplinaId,
-        avaliacaoId: d.id, 
-      })) : [];
-      
-      const snapshotPromises = initialDisciplinasMapeadas.map(async d => {
-          if (d.isPrincipal && defaultSnapshotId) {
-              return { ...d, avaliacaoId: defaultSnapshotId };
-          }
-          try {
-              const res = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
-              return { ...d, avaliacaoId: res.data };
-          } catch (error: any) {
-              if (error.response?.status === 404) return d;
-              return d;
-          }
-      });
-      
-      const disciplinasMapeadas = await Promise.all(snapshotPromises);
-      setDisciplinasDisponiveis(disciplinasMapeadas);
-
-      let initial = initialEstruturaId ?? null;
-      let initialDisc = initialDiscId ?? null;
-
-      if (!initial) {
-        if (defaultSnapshotId) {
-            initial = defaultSnapshotId.toString();
-            if (turmaData.disciplinaId) initialDisc = turmaData.disciplinaId.toString();
-        }
-        else if (turmaData.disciplinaId) {
-            initial = turmaData.disciplinaId.toString();
-            initialDisc = turmaData.disciplinaId.toString();
-        }
-        else if (disciplinasMapeadas.length > 0) {
-            initial = disciplinasMapeadas[0].avaliacaoId.toString();
-            initialDisc = disciplinasMapeadas[0].id.toString();
-        }
-      }
-      
-      if (initial) setSelectedEstruturaId(initial);
-      if (initialDisc) setSelectedDiscId(initialDisc);
-
-      if (alunosData.length > 0) setAlunoSelecionado(prev => prev ?? alunosData[0]);
-
-    } catch (err) {
-      console.error('Erro ao carregar dados iniciais', err);
-      Swal.fire('Erro', 'Não foi possível carregar os dados iniciais.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [turmaId, initialEstruturaId, initialDiscId]);
-
-  useEffect(() => { carregarTurmaEAuxiliares(); }, [carregarTurmaEAuxiliares]);
-
-  const checarStatusFinalizacao = useCallback(async (alunoId: number, estruturaId: string) => {
-    if (!estruturaId || !isSnapshotReady) {
-      setAvaliacaoFinalizada(false);
-      setResultadoFinal(null);
-      setAvaliacoesState({});
-      return;
-    }
-
-    try {
-      const res = await api.get(`/avaliacoes`, { params: { alunoId, estruturaDisciplinaId: estruturaId } });
-      const avaliacoes = Array.isArray(res.data) ? res.data : [];
-      const isFinalizada = avaliacoes.some((av: any) => av.finalizada === true);
-      setAvaliacaoFinalizada(isFinalizada);
-
-      if (isFinalizada) {
-        const resBoletim = await api.get<ResultadoBoletimDTO>(`/avaliacoes/boletim`, { params: { alunoId, estruturaDisciplinaId: estruturaId } });
-        setResultadoFinal(resBoletim.data);
-      } else setResultadoFinal(null);
-
-      const mapa: Record<number, AvaliacaoEstado> = {};
-      avaliacoes.forEach((av: any) => {
-        const critId = av.criterio?.id || av.criterioId;
-        if (critId) mapa[critId] = { atendeu: av.atendeu, obs: av.observacao || '', finalizada: av.finalizada };
-      });
-      setAvaliacoesState(mapa);
-    } catch (err) {
-      console.error('Erro ao checar status de finalizacao', err);
-      setAvaliacaoFinalizada(false);
-      setResultadoFinal(null);
-      setAvaliacoesState({});
-    }
-  }, [isSnapshotReady]);
-
+  // Fecha menus ao clicar fora
   useEffect(() => {
-    const load = async () => {
-      if (!selectedEstruturaId) return;
-      
-      if (!isSnapshotReady) {
-        setCapacidades([]);
-        setAvaliacoesState({});
-        setAvaliacaoFinalizada(false);
-        setResultadoFinal(null);
-        return;
+    function handleClickOutside(event: MouseEvent) {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+        setActionsMenuOpen(false);
       }
-
-      setLoading(true);
-      try {
-        const estruturaIdNum = parseInt(selectedEstruturaId, 10);
-        const resCaps = await api.get<Capacidade[]>(`/estrutura/${estruturaIdNum}/capacidades`);
-        setCapacidades(Array.isArray(resCaps.data) ? resCaps.data : []);
-
-        if (alunoSelecionado) await checarStatusFinalizacao(alunoSelecionado.id, selectedEstruturaId);
-      } catch (err) {
-        console.error('Erro ao carregar estrutura:', err);
-        Swal.fire('Erro', 'Falha ao carregar a Estrutura de Avaliação (Snapshot).', 'error');
-        setCapacidades([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [selectedEstruturaId, isSnapshotReady, alunoSelecionado, checarStatusFinalizacao]);
-
-  // --- actions ---
-  const handleGerarSnapshot = async () => {
-    if (!turma || !templateIdSelecionado || finalizando) return;
-
-    const result = await Swal.fire({
-      title: `Criar Snapshot para ${disciplinaSelecionada?.nome}?`,
-      text: `Isso copiará a estrutura de Capacidades e Critérios (Template ID: ${templateIdSelecionado}) para criar uma versão imutável (Snapshot). Confirma?`,
-      icon: 'info', showCancelButton: true, confirmButtonText: 'Sim, Criar Snapshot', confirmButtonColor: '#10b981'
-    });
-
-    if (!result.isConfirmed) return;
-
-    setFinalizando(true);
-    try {
-      const res = await api.post<TurmaResponseDTO>(`/turmas/${turmaId}/snapshot/${templateIdSelecionado}`);
-      const novoSnapshotId = res.data?.estruturaSnapshotId;
-
-      if (!novoSnapshotId) throw new Error("O servidor não retornou o ID do Snapshot.");
-      const novoSnapshotIdStr = novoSnapshotId.toString();
-
-      setTurma(res.data); 
-
-      setDisciplinasDisponiveis(prev => prev.map(d => 
-          d.id.toString() === templateIdSelecionado ? { ...d, avaliacaoId: novoSnapshotId } : d
-      ));
-      
-      setSelectedEstruturaId(novoSnapshotIdStr);
-      router.push(`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${novoSnapshotIdStr}&discId=${templateIdSelecionado}`);
-      
-      Swal.fire('Sucesso!', 'Snapshot criado e ativado para avaliação.', 'success');
-      
-    } catch (err: any) {
-      console.error('Erro ao criar snapshot', err);
-      Swal.fire('Erro', err?.response?.data || 'Falha ao criar o Snapshot.', 'error');
-    } finally { setFinalizando(false); }
-  };
-
-  const salvarAvaliacao = async (criterioId: number, atendeu: boolean | null, obs: string) => {
-    if (finalizando || avaliacaoFinalizada || !alunoSelecionado || !selectedEstruturaId || !isSnapshotReady) {
-      Swal.fire('Erro', 'A avaliação está bloqueada ou a estrutura não é válida.', 'error');
-      return;
     }
-    setAvaliacoesState(prev => ({ ...prev, [criterioId]: { atendeu, obs, finalizada: false } }));
-    try {
-      await api.post(`/avaliacoes`, {
-        alunoId: alunoSelecionado.id,
-        estruturaDisciplinaId: parseInt(selectedEstruturaId, 10),
-        criterioId,
-        atendeu,
-        observacao: obs,
-      });
-    } catch (err) {
-      console.error('Falha ao salvar avaliacao', err);
-      Swal.fire('Erro', 'Falha ao salvar a avaliação.', 'error');
-      if (alunoSelecionado) await checarStatusFinalizacao(alunoSelecionado.id, selectedEstruturaId);
-    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Ao trocar de aluno ou disciplina, fecha sidebar no mobile
+  const handleSelectAlunoUI = (aluno: any) => {
+      selection.setAluno(aluno);
+      setSidebarOpen(false);
+  };
+  const handleSelectDiscUI = (val: string) => {
+      selection.setDiscId(val);
+      setSidebarOpen(false);
   };
 
-  const marcarTodos = async (atendeu: boolean | null) => {
-    if (finalizando || avaliacaoFinalizada || !alunoSelecionado || !selectedEstruturaId || todosCriteriosIds.length === 0 || !isSnapshotReady) return;
-    setFinalizando(true);
-    try {
-      const promises = todosCriteriosIds.map(critId => api.post(`/avaliacoes`, {
-        alunoId: alunoSelecionado.id,
-        estruturaDisciplinaId: parseInt(selectedEstruturaId, 10),
-        criterioId: critId,
-        atendeu,
-        observacao: avaliacoesState[critId]?.obs || '',
-      }));
-      await Promise.all(promises);
-      setAvaliacoesState(prev => {
-        const novo = { ...prev };
-        todosCriteriosIds.forEach(id => novo[id] = { atendeu, obs: novo[id]?.obs || '', finalizada: false });
-        return novo;
-      });
-      Swal.fire({ icon: 'success', title: atendeu === null ? 'Limpeza concluída!' : 'Avaliação em massa concluída!', toast: true, position: 'top-end', timer: 2000, showConfirmButton: false });
-    } catch (err) {
-      Swal.fire('Erro', 'Erro ao salvar em massa.', 'error');
-      if (alunoSelecionado) await checarStatusFinalizacao(alunoSelecionado.id, selectedEstruturaId);
-    } finally { setFinalizando(false); }
-  };
 
-  const handleFinalizar = async () => {
-    if (!alunoSelecionado || !selectedEstruturaId || !isSnapshotReady) return;
-    const result = await Swal.fire({ title: 'Confirmar Fechamento?', text: 'Notas não poderão ser alteradas. Continuar?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sim, Fechar' });
-    if (!result.isConfirmed) return;
-    setFinalizando(true);
-    try {
-      const res = await api.post(`/avaliacoes/fechar?alunoId=${alunoSelecionado.id}&estruturaDisciplinaId=${selectedEstruturaId}`);
-      setAvaliacaoFinalizada(true);
-      setResultadoFinal(res.data);
-      Swal.fire('Fechada!', 'Avaliação finalizada.', 'success');
-      await checarStatusFinalizacao(alunoSelecionado.id, selectedEstruturaId);
-    } catch (err: any) {
-      Swal.fire('Erro', err?.response?.data || 'Falha ao fechar.', 'error');
-    } finally { setFinalizando(false); }
-  };
+  // --- RENDER ---
 
-  // --- NOVA FUNÇÃO: FECHAR TURMA INTEIRA ---
-  const handleFinalizarTurma = async () => {
-    if (!turmaId || !selectedEstruturaId || !isSnapshotReady) return;
-
-    const result = await Swal.fire({
-      title: 'Fechar Toda a Turma?',
-      text: 'Esta ação finalizará as avaliações de TODOS os alunos matriculados nesta turma. As notas serão geradas e gravadas. Deseja continuar?',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sim, Fechar Turma',
-      confirmButtonColor: '#7e22ce',
-      cancelButtonText: 'Cancelar'
-    });
-
-    if (!result.isConfirmed) return;
-
-    setFinalizando(true);
-    try {
-      await api.post(`/avaliacoes/fechar/turma/${turmaId}?estruturaDisciplinaId=${selectedEstruturaId}`);
-      
-      Swal.fire('Concluído!', 'A turma foi fechada com sucesso. Todas as notas foram calculadas.', 'success');
-      
-      // Atualiza o status do aluno atual para refletir o fechamento
-      if (alunoSelecionado) {
-        await checarStatusFinalizacao(alunoSelecionado.id, selectedEstruturaId);
-      }
-    } catch (err: any) {
-      Swal.fire('Erro', err?.response?.data || 'Erro ao fechar a turma.', 'error');
-    } finally {
-      setFinalizando(false);
-    }
-  };
-
-  const handleReabrir = async () => {
-    if (!alunoSelecionado || !selectedEstruturaId || !isSnapshotReady) return;
-    const result = await Swal.fire({ title: 'Reabrir Avaliação?', text: 'Permite editar notas novamente. Continuar?', icon: 'question', showCancelButton: true, confirmButtonText: 'Sim, Reabrir' });
-    if (!result.isConfirmed) return;
-    setFinalizando(true);
-    try {
-      await api.post(`/avaliacoes/reabrir?alunoId=${alunoSelecionado.id}&estruturaDisciplinaId=${selectedEstruturaId}`);
-      setAvaliacaoFinalizada(false);
-      setResultadoFinal(null);
-      await checarStatusFinalizacao(alunoSelecionado.id, selectedEstruturaId);
-      Swal.fire('Reaberta!', 'Avaliação reaberta.', 'success');
-    } catch (err: any) {
-      Swal.fire('Erro', err?.response?.data || 'Falha ao reabrir.', 'error');
-    } finally { setFinalizando(false); }
-  };
-
-  const handleSelectDiscipline = (disciplinaId: string) => {
-    const disc = disciplinasDisponiveis.find(d => d.id.toString() === disciplinaId);
-    if (disc) {
-        const targetEstruturaId = disc.avaliacaoId.toString();
-        setSelectedEstruturaId(targetEstruturaId);
-        setSelectedDiscId(disciplinaId);
-        router.push(`/gestao/turmas/${turmaId}/avaliacao?estruturaId=${targetEstruturaId}&discId=${disciplinaId}`);
-    }
-  };
-
-  const baixarBoletim = async () => {
-    if (!alunoSelecionado || !turma || !selectedEstruturaId || !isSnapshotReady) return;
-    try {
-      const response = await api.get('/arquivos/boletim/download', { params: { alunoId: alunoSelecionado.id, disciplinaId: selectedEstruturaId }, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Boletim_${alunoSelecionado.nome.replace(/\s+/g, '_')}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) { Swal.fire('Erro', 'Não foi possível baixar o boletim.', 'error'); }
-  };
-
-  const nomeDisciplina = disciplinaSelecionada?.nome || turma?.nomeDisciplina || 'N/A';
-  const idExibicao = disciplinaSelecionada?.id || 'N/A';
-  const idSnapshotExibicao = isSnapshotReady ? selectedEstruturaId : 'AUSENTE';
-  const safeEstruturaId = selectedEstruturaId;
-
-  if (loading) return <div className="p-8 flex justify-center text-gray-500"><Loader2 size={32} className="animate-spin" /> Carregando dados da turma...</div>;
+  if (loading) return <div className="h-screen flex flex-col items-center justify-center text-gray-500 gap-3"><Loader2 size={40} className="animate-spin text-blue-600" /><p>Carregando ambiente de avaliação...</p></div>;
   if (!turma) return <div className="p-8 text-red-500">Turma não encontrada.</div>;
-  if (!selectedEstruturaId) return <div className="p-8 text-red-500">Estrutura de avaliação não definida para esta turma.</div>;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <aside className="w-80 bg-white border-r flex flex-col shadow-lg z-20 shrink-0 fixed h-full top-0 left-0 pt-16">
-        <div className="p-4 border-b bg-blue-700 text-white flex justify-between items-center">
-          <div>
-            <h2 className="font-bold text-lg flex items-center gap-2"><Users size={20} className='text-white'/> Alunos</h2>
-            <p className="text-xs text-blue-200 mt-1">{alunos.length} matriculados</p>
-          </div>
-          <Link href={`/gestao/turmas/${turmaId}`} className="p-2 hover:bg-blue-600 rounded text-white" title="Voltar"><ArrowLeft size={18} /></Link>
+    <div className="flex h-screen bg-gray-50 overflow-hidden relative">
+      
+      {/* --- SIDEBAR RESPONSIVA --- */}
+      {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />}
+      
+      <aside className={`fixed md:static inset-y-0 left-0 z-30 w-80 bg-white border-r flex flex-col shadow-lg transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} pt-0`}>
+        <div className="h-16 border-b bg-blue-700 text-white flex justify-between items-center px-4 shrink-0">
+            <div className="flex items-center gap-2">
+                <Users size={20} className='text-white/80'/> 
+                <div>
+                    <h2 className="font-bold text-sm leading-tight">Lista de Alunos</h2>
+                    <p className="text-[10px] text-blue-200">{alunos.length} matriculados</p>
+                </div>
+            </div>
+            <Link href={`/gestao/turmas/${turmaId}`} className="p-1.5 hover:bg-white/10 rounded-full transition" title="Voltar"><ArrowLeft size={18} /></Link>
         </div>
 
-        {alunos.length === 0 ? (
-          <div className="p-4 text-gray-500 text-sm text-center">Nenhum aluno.</div>
-        ) : (
-          <div className="overflow-y-auto flex-1">
-            {alunos.map((aluno) => (
-              <button key={aluno.id} onClick={() => setAlunoSelecionado(aluno)} className={`w-full text-left p-4 border-b hover:bg-gray-50 transition-colors flex items-center justify-between ${alunoSelecionado?.id === aluno.id ? "bg-blue-50 border-l-4 border-l-blue-600" : "border-l-4 border-l-transparent"}`}>
-                <span className="font-medium text-sm text-gray-700 truncate uppercase">{aluno.nome}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="p-4 border-t bg-gray-50">
-          <p className="text-xs font-bold text-gray-400 uppercase">{alunoSelecionado?.nome ? `AVAL. DE ${alunoSelecionado.nome}` : 'SELECIONE UM ALUNO'}</p>
+        <div className="overflow-y-auto flex-1 bg-white">
+            {alunos.length === 0 ? (
+                <div className="p-6 text-center text-gray-400 text-sm">Nenhum aluno encontrado.</div>
+            ) : (
+                alunos.map((aluno) => (
+                    <button 
+                        key={aluno.id} 
+                        onClick={() => handleSelectAlunoUI(aluno)} 
+                        className={`w-full text-left p-4 border-b hover:bg-gray-50 transition-all flex items-center gap-3 ${selection.aluno?.id === aluno.id ? "bg-blue-50 border-l-4 border-l-blue-600" : "border-l-4 border-l-transparent text-gray-600"}`}
+                    >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${selection.aluno?.id === aluno.id ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-500'}`}>
+                            {aluno.nome.charAt(0)}
+                        </div>
+                        <span className="font-medium text-sm truncate uppercase flex-1">{aluno.nome}</span>
+                    </button>
+                ))
+            )}
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full pl-80">
-        <header className="sticky top-0 h-16 bg-white border-b flex items-center px-6 justify-between shadow-sm z-10">
-          <div className="flex items-center gap-4">
-            <div className="bg-gray-100 p-2 rounded-full"><BookOpen className="text-gray-600" size={20} /></div>
+      {/* --- CONTEÚDO PRINCIPAL --- */}
+      <main className="flex-1 flex flex-col h-full w-full relative">
+        
+        {/* HEADER */}
+        <header className="h-16 bg-white border-b flex items-center px-4 md:px-6 justify-between shadow-sm z-10 shrink-0 gap-3">
+          <div className="flex items-center gap-3 flex-1 overflow-hidden">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md"><Menu size={24}/></button>
             
-            <select 
-                value={selectedDiscId || ''} 
-                onChange={(e) => handleSelectDiscipline(e.target.value)} 
-                className={`p-2 border border-gray-300 rounded-md text-sm font-semibold focus:ring-2 ${isSnapshotReady ? 'text-indigo-700 bg-indigo-50 focus:ring-indigo-500' : 'text-red-700 bg-red-50 focus:ring-red-500'}`}
-            >
-              {[...disciplinasDisponiveis]
-                 .sort((a, b) => (a.id === turma.disciplinaId ? -1 : (b.id === turma.disciplinaId ? 1 : 0)))
-                 .map(estrutura => (
-                    <option key={estrutura.id} value={estrutura.id.toString()}>
-                        {estrutura.nome} ({estrutura.sigla}) {estrutura.id === turma.disciplinaId && ' (Principal)'}
-                    </option>
-              ))}
-            </select>
-            <span className="text-xs text-gray-500">({turma.anoSemestre} - {turma.termoAtual}º Termo) | Snapshot ID: **{idSnapshotExibicao}**</span>
+            <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3 flex-1 overflow-hidden">
+                <div className="relative max-w-[250px] md:max-w-xs w-full">
+                    <select 
+                        value={selection.discId || ''} 
+                        onChange={(e) => handleSelectDiscUI(e.target.value)} 
+                        className={`w-full pl-9 pr-8 py-2 border rounded-lg text-sm font-semibold appearance-none focus:ring-2 outline-none transition cursor-pointer
+                            ${avaliacao.isSnapshotReady ? 'border-indigo-200 bg-indigo-50 text-indigo-700 focus:ring-indigo-200' : 'border-red-200 bg-red-50 text-red-700 focus:ring-red-200'}`}
+                    >
+                        {selection.disciplinas.sort((a,b) => (a.isPrincipal ? -1 : 1)).map(d => (
+                            <option key={d.id} value={d.id.toString()}>{d.nome} {d.isPrincipal ? '(Principal)' : ''}</option>
+                        ))}
+                    </select>
+                    <BookOpen size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${avaliacao.isSnapshotReady ? 'text-indigo-500' : 'text-red-500'}`} />
+                    <ChevronDown size={16} className={`absolute right-3 top-1/2 -translate-y-1/2 ${avaliacao.isSnapshotReady ? 'text-indigo-400' : 'text-red-400'}`} />
+                </div>
+                <div className="hidden md:flex flex-col">
+                     <span className="text-xs font-bold text-gray-500">{turma.anoSemestre}</span>
+                     <span className="text-[10px] text-gray-400">Snapshot ID: {avaliacao.idSnapshotExibicao}</span>
+                </div>
+            </div>
           </div>
 
-          {alunoSelecionado && (
-            <div className="flex gap-2">
-              {finalizando ? (
-                <span className="text-indigo-600 flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Processando...</span>
-              ) : (
-                <>
-                  {!avaliacaoFinalizada && isSnapshotReady && (
-                    <>
-                      <button onClick={() => marcarTodos(true)} className="flex items-center gap-1 h-8 bg-green-500 text-white px-4 py-2 rounded-md text-xs font-bold hover:bg-green-600 transition">Todos Atingiu</button>
-                      <button onClick={() => marcarTodos(false)} className="flex items-center gap-1 h-8 bg-red-500 text-white px-4 py-2 rounded-md text-xs font-bold hover:bg-red-600 transition">Todos NÃO ATINGIU</button>
-                      <button onClick={() => marcarTodos(null)} className="flex items-center gap-1 h-8 bg-gray-300 text-gray-800 px-4 py-2 rounded-md text-xs font-bold hover:bg-gray-400 transition" title="Limpar todas as avaliações">Limpar Tudo</button>
-                    </>
-                  )}
+          {/* ÁREA DO ALUNO E AÇÕES */}
+          {selection.aluno && (
+             <div className="flex items-center gap-2 md:gap-4">
+                <div className="hidden md:block text-right">
+                    <p className="text-sm font-bold text-gray-800">{selection.aluno.nome}</p>
+                    <p className="text-xs text-gray-500">{avaliacao.finalizada ? 'Avaliação Fechada' : 'Em Avaliação'}</p>
+                </div>
 
-                  {isSnapshotReady && (
-                    <button onClick={avaliacaoFinalizada ? handleReabrir : handleFinalizar} className={`px-4 py-2 rounded-md flex items-center gap-2 h-8 transition shadow-sm font-medium text-xs ml-4 ${avaliacaoFinalizada ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
-                      {avaliacaoFinalizada ? <Unlock size={16} /> : <Lock size={16} />}{avaliacaoFinalizada ? 'Reabrir Avaliação' : 'Finalizar Avaliação'}
-                    </button>
-                  )}
-                  
-                  {/* BOTÃO FECHAR TURMA */}
-                  {isSnapshotReady && (
-                    <button 
-                        onClick={handleFinalizarTurma}
-                        className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center gap-2 shadow-sm font-medium transition text-xs ml-2"
-                        title="Finalizar avaliações de todos os alunos"
-                    >
-                        <ShieldCheck size={16} /> Fechar Turma
-                    </button>
-                  )}
+                {avaliacao.isSnapshotReady && !avaliacao.finalizando && (
+                    <div className="relative" ref={actionsMenuRef}>
+                        <button onClick={() => setActionsMenuOpen(!actionsMenuOpen)} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg font-medium text-sm transition">
+                            <span className="hidden md:inline">Ações</span>
+                            <MoreVertical size={18} />
+                        </button>
+                        
+                        {/* DROPDOWN MENU - Z-INDEX AUMENTADO AQUI (z-[100]) */}
+                        {actionsMenuOpen && (
+                            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                                <div className="px-4 py-2 border-b border-gray-100 md:hidden">
+                                    <p className="text-xs font-bold text-gray-500 uppercase">Aluno</p>
+                                    <p className="text-sm font-bold text-gray-800 truncate">{selection.aluno.nome}</p>
+                                </div>
+                                
+                                <button onClick={() => actions.toggleStatusAvaliacao(!avaliacao.finalizada)} className={`w-full text-left px-4 py-3 text-sm flex items-center gap-3 hover:bg-gray-50 ${avaliacao.finalizada ? 'text-red-600' : 'text-indigo-600'}`}>
+                                    {avaliacao.finalizada ? <Unlock size={16}/> : <Lock size={16}/>}
+                                    {avaliacao.finalizada ? 'Reabrir Avaliação' : 'Finalizar Avaliação'}
+                                </button>
+                                
+                                <div className="border-t my-1"></div>
 
-                  {isSnapshotReady && (
-                    <Link href={`/gestao/turmas/${turmaId}/relatorio?estruturaId=${safeEstruturaId}&origem=avaliacao`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 shadow-sm font-medium transition text-xs"><FileBarChart size={16} /> Relatório</Link>
-                  )}
+                                <Link href={`/gestao/turmas/${turmaId}/relatorio?estruturaId=${selection.estId}&origem=avaliacao`} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                                    <FileBarChart size={16} /> Relatório da Turma
+                                </Link>
+                                <button onClick={actions.baixarBoletim} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                                    <Download size={16} /> Baixar Boletim
+                                </button>
+                                
+                                <div className="border-t my-1"></div>
 
-                  {isSnapshotReady && (
-                    <button onClick={baixarBoletim} className="bg-gray-200 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-300 flex items-center gap-2 shadow-sm font-medium transition text-xs" title="Download Boletim Individual"><Download size={16} /></button>
-                  )}
-                </>
-              )}
-            </div>
+                                <button onClick={actions.handleFinalizarTurma} className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-3">
+                                    <ShieldCheck size={16} /> Fechar Turma Inteira
+                                </button>
+                                <button onClick={actions.handleAtualizarSnapshot} className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-3">
+                                    <RefreshCw size={16} /> Atualizar Snapshot
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+             </div>
           )}
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
-          {alunoSelecionado && avaliacaoFinalizada && (<div className="mb-8">{renderStatusFinalizado(alunoSelecionado, resultadoFinal, handleReabrir, finalizando)}</div>)}
-
-          {!alunoSelecionado ? (
-            <div className="flex h-full flex-col items-center justify-center text-gray-400"><User size={64} className="mb-4 text-gray-300" /><p className="text-lg">Selecione um aluno na barra lateral para começar.</p></div>
-          ) : (
-            <div>
-              {!isSnapshotReady ? (
-                <div className={`bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center mb-8 ${avaliacaoFinalizada ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <AlertCircle size={48} className="text-yellow-500 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold text-yellow-800 mb-2">Estrutura Não Ativa (Snapshot Ausente)</h3>
-                  <p className="text-yellow-700">A disciplina <strong>{nomeDisciplina}</strong> (Template ID: {idExibicao}) não possui um Snapshot de Avaliação criado ou ativo para esta turma. **Você precisa criar o Snapshot para continuar a avaliação.**</p>
-                  {templateIdSelecionado && (
-                    <button onClick={handleGerarSnapshot} disabled={finalizando} className="mt-4 bg-emerald-600 text-white px-6 py-2 rounded-md hover:bg-emerald-700 flex items-center gap-2 text-sm font-medium transition shadow-sm mx-auto disabled:opacity-50">{finalizando ? <Loader2 size={18} className="animate-spin"/> : <Zap size={18}/>} Criar Snapshot Agora e Avaliar</button>
-                  )}
-                </div>
-              ) : (
-                <div className={`${avaliacaoFinalizada ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {capacidades.length === 0 ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center"><AlertCircle size={48} className="text-yellow-500 mx-auto mb-4" /><h3 className="text-xl font-bold text-yellow-800 mb-2">Sem Critérios</h3><p className="text-yellow-700">O Snapshot desta estrutura de avaliação não tem critérios cadastrados. Verifique a disciplina base.</p></div>
-                  ) : (
-                    <div className="max-w-5xl mx-auto space-y-8 pb-20">
-                      {capacidades.map((cap, index) => (
-                        <div key={cap.id} className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-                          <div className={`p-4 ${cap.tipo === 'TECNICA' ? 'bg-indigo-50 text-indigo-800' : 'bg-pink-50 text-pink-800'} border-b`}><h3 className="text-lg font-bold">{cap.tipo} {index + 1}. {cap.descricao}</h3></div>
-                          <div className="divide-y divide-gray-100">
-                            {cap.criterios && cap.criterios.length > 0 ? (
-                              cap.criterios.map((crit: Criterio) => {
-                                const critId = crit.id;
-                                const av = avaliacoesState[critId] || { atendeu: null, obs: '' };
-                                return (
-                                  <div key={critId} className="p-4 hover:bg-gray-50 transition group">
-                                    <div className="flex flex-col md:flex-row md:items-center gap-4">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1"><span className={`w-2 h-2 rounded-full ${crit.tipo === 'CRITICO' ? 'bg-red-500' : 'bg-blue-400'}`}></span><span className="text-[10px] font-bold text-gray-400 uppercase">{crit.tipo}</span></div>
-                                        <p className="text-gray-800 font-medium">{crit.descricao}</p>
-                                      </div>
-                                      <div className="flex items-center gap-2 min-w-[280px] justify-end">
-                                        <button onClick={() => salvarAvaliacao(critId, true, av.obs)} className={`flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium transition ${av.atendeu === true ? "bg-green-600 text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-green-100 hover:text-green-700"}`}><CheckCircle size={18} /> Atingiu</button>
-                                        <button onClick={() => salvarAvaliacao(critId, false, av.obs)} className={`flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium transition ${av.atendeu === false ? "bg-red-600 text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-700"}`}><XCircle size={18} /> Não Atingiu</button>
-                                        {av.atendeu !== null && (<button onClick={() => salvarAvaliacao(critId, null, av.obs)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition" title="Limpar avaliação"><RotateCcw size={16} /></button>)}
-                                      </div>
-                                    </div>
-                                    <div className={`mt-3 ${av.obs ? 'block' : 'hidden group-hover:block'}`}>
-                                      <input onBlur={() => av.atendeu !== null && salvarAvaliacao(critId, av.atendeu, av.obs)} placeholder="Observação..." className="w-full text-sm p-2 border rounded bg-white focus:ring-1 focus:ring-blue-300 outline-none" value={av.obs || ''} onChange={(e) => { const val = e.target.value; setAvaliacoesState(prev => ({ ...prev, [critId]: { ...prev[critId], obs: val } })); }} />
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <p className="p-4 text-gray-500 italic text-sm">Nenhum critério vinculado a esta capacidade.</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+        {/* ÁREA DE SCROLL */}
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8">
+            {avaliacao.finalizando && (
+                <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-40 flex items-center justify-center">
+                    <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
+                        <Loader2 className="animate-spin text-blue-600" />
+                        <span className="text-sm font-medium text-gray-700">Processando...</span>
                     </div>
-                  )}
                 </div>
-              )}
-            </div>
-          )}
+            )}
+
+            {!selection.aluno ? (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                    <User size={64} className="mb-4 text-gray-300 opacity-50" />
+                    <p className="text-lg font-medium">Selecione um aluno para começar.</p>
+                    <button onClick={() => setSidebarOpen(true)} className="mt-4 md:hidden bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Abrir Lista</button>
+                </div>
+            ) : (
+                <div className="max-w-5xl mx-auto pb-20">
+                    
+                    {/* STATUS FINALIZADO */}
+                    {avaliacao.finalizada && avaliacao.resultado && (
+                        <div className="mb-6 bg-white border border-green-200 rounded-xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                             <div className="flex items-center gap-4">
+                                <div className="bg-green-100 p-3 rounded-full text-green-700"><Lock size={24}/></div>
+                                <div>
+                                    <h3 className="font-bold text-gray-800 text-lg">Avaliação Concluída</h3>
+                                    <p className="text-sm text-gray-500">Este aluno já possui nota fechada.</p>
+                                </div>
+                             </div>
+                             <div className="flex items-center gap-4">
+                                <div>
+                                    <span className="block text-3xl font-bold text-indigo-600">{avaliacao.resultado.nivelAlcancado}</span>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Nível</span>
+                                </div>
+                                <div className={`px-3 py-1 rounded-full text-xs font-bold ${avaliacao.resultado.nivelAlcancado >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {avaliacao.resultado.nivelAlcancado >= 50 ? 'APROVADO' : 'RETIDO'}
+                                </div>
+                             </div>
+                        </div>
+                    )}
+
+                    {/* BARRA DE AVALIAÇÃO RÁPIDA */}
+                    {avaliacao.isSnapshotReady && !avaliacao.finalizada && (
+                        <div className="bg-white/80 backdrop-blur-md border border-gray-200 rounded-xl p-2 mb-6 shadow-sm flex flex-wrap items-center justify-between gap-2">
+                             <div className="flex items-center gap-2 px-2">
+                                <Filter size={16} className="text-gray-400" />
+                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Avaliação Rápida</span>
+                             </div>
+                             <div className="flex gap-2 flex-1 justify-end">
+                                <button onClick={() => actions.marcarTodos(true)} className="flex-1 sm:flex-none bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition">
+                                    <CheckCircle size={14}/> Todos Sim
+                                </button>
+                                <button onClick={() => actions.marcarTodos(false)} className="flex-1 sm:flex-none bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition">
+                                    <XCircle size={14}/> Todos Não
+                                </button>
+                                <button onClick={() => actions.marcarTodos(null)} className="bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-bold transition" title="Limpar">
+                                    <RotateCcw size={14}/>
+                                </button>
+                             </div>
+                        </div>
+                    )}
+
+                    {/* LISTA DE CRITÉRIOS */}
+                    {!avaliacao.isSnapshotReady ? (
+                        <div className="bg-white border-2 border-dashed border-yellow-300 rounded-xl p-8 text-center">
+                             <Zap className="mx-auto text-yellow-500 mb-2" size={40} />
+                             <h3 className="text-lg font-bold text-yellow-800">Snapshot Pendente</h3>
+                             <p className="text-sm text-yellow-700 mb-4">A avaliação desta disciplina ainda não foi inicializada.</p>
+                             <button onClick={actions.handleGerarSnapshot} className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 font-medium text-sm shadow-md transition">
+                                Criar Snapshot Agora
+                             </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {capacidades.map((cap, i) => (
+                                <div key={cap.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                    <div className={`px-4 py-3 border-b flex justify-between items-center ${cap.tipo === 'TECNICA' ? 'bg-indigo-50/50' : 'bg-pink-50/50'}`}>
+                                        <h4 className={`text-sm font-bold ${cap.tipo === 'TECNICA' ? 'text-indigo-800' : 'text-pink-800'}`}>
+                                            {i + 1}. {cap.descricao}
+                                        </h4>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${cap.tipo === 'TECNICA' ? 'bg-indigo-100 text-indigo-700' : 'bg-pink-100 text-pink-700'}`}>{cap.tipo}</span>
+                                    </div>
+                                    <div className="divide-y divide-gray-50">
+                                        {cap.criterios?.map(crit => {
+                                            const st = avaliacao.state[crit.id] || { atendeu: null, obs: '' };
+                                            return (
+                                                <div key={crit.id} className={`p-4 transition-colors ${st.atendeu === true ? 'bg-green-50/30' : st.atendeu === false ? 'bg-red-50/30' : 'hover:bg-gray-50'}`}>
+                                                    <div className="flex flex-col sm:flex-row gap-3 sm:items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className={`w-2 h-2 rounded-full ${crit.tipo === 'CRITICO' ? 'bg-red-500' : 'bg-blue-400'}`} />
+                                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{crit.tipo}</span>
+                                                            </div>
+                                                            <p className="text-sm text-gray-700 leading-snug">{crit.descricao}</p>
+                                                        </div>
+                                                        
+                                                        {/* BOTÕES DE AVALIAÇÃO INDIVIDUAL (GRANDES) */}
+                                                        {!avaliacao.finalizada && (
+                                                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                                                <button 
+                                                                    onClick={() => actions.salvarAvaliacao(crit.id, true, st.obs)} 
+                                                                    className={`flex items-center gap-1 px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm
+                                                                    ${st.atendeu === true 
+                                                                        ? 'bg-green-600 text-white shadow-md' 
+                                                                        : 'bg-white text-gray-500 border border-gray-200 hover:border-green-300 hover:text-green-600'}`}
+                                                                >
+                                                                    <CheckCircle size={16} /> Atingiu
+                                                                </button>
+                                                                
+                                                                <button 
+                                                                    onClick={() => actions.salvarAvaliacao(crit.id, false, st.obs)} 
+                                                                    className={`flex items-center gap-1 px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm
+                                                                    ${st.atendeu === false 
+                                                                        ? 'bg-red-600 text-white shadow-md' 
+                                                                        : 'bg-white text-gray-500 border border-gray-200 hover:border-red-300 hover:text-red-600'}`}
+                                                                >
+                                                                    <XCircle size={16} /> Não Atingiu
+                                                                </button>
+
+                                                                {st.atendeu !== null && (
+                                                                    <button onClick={() => actions.salvarAvaliacao(crit.id, null, st.obs)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition" title="Limpar">
+                                                                        <RotateCcw size={16} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {avaliacao.finalizada && st.atendeu !== null && (
+                                                            <div className={`px-3 py-1 rounded-full text-xs font-bold self-start ${st.atendeu ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                {st.atendeu ? 'ATINGIU' : 'NÃO ATINGIU'}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {!avaliacao.finalizada && (
+                                                        <input 
+                                                            className={`mt-2 w-full text-xs bg-transparent border-b border-dashed border-gray-300 focus:border-blue-400 focus:bg-blue-50/20 outline-none p-1 transition-all ${st.obs ? 'text-gray-600' : 'text-gray-400'}`}
+                                                            placeholder="Adicionar observação..."
+                                                            value={st.obs}
+                                                            onChange={e => actions.salvarAvaliacao(crit.id, st.atendeu, e.target.value)} 
+                                                            onBlur={() => st.atendeu !== null && actions.salvarAvaliacao(crit.id, st.atendeu, st.obs)}
+                                                        />
+                                                    )}
+                                                    {avaliacao.finalizada && st.obs && <p className="mt-2 text-xs text-gray-500 italic border-l-2 border-gray-300 pl-2">Obs: {st.obs}</p>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
       </main>
     </div>
   );
 }
-
-const renderStatusFinalizado = (aluno: Aluno, resultado: ResultadoBoletimDTO | null, handleReabrir: () => Promise<void>, finalizando: boolean) => {
-  if (!aluno || !resultado) return null;
-  const nivel = resultado.nivelAlcancado;
-  const statusCor = nivel >= 50 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-  const statusTexto = nivel >= 50 ? 'APROVADO' : 'RETIDO';
-  return (
-    <div className="bg-white p-6 rounded-lg shadow-xl border-l-4 border-l-green-600 flex justify-between items-center max-w-5xl mx-auto">
-      <div className="flex items-center gap-4"><Lock size={36} className="text-gray-500" /><div><p className="text-xs font-bold text-gray-500 uppercase">Avaliação Finalizada</p><h3 className="text-2xl font-bold text-gray-800">{aluno.nome} - Resultado Final</h3></div></div>
-      <div className="flex items-center gap-6"><div className="text-center"><span className="text-4xl font-extrabold text-indigo-700">{resultado.nivelAlcancado}</span><p className="text-xs font-bold text-gray-500">Nível Final</p></div><span className={`px-4 py-2 rounded-full text-sm font-bold ${statusCor}`}>{statusTexto}</span><button onClick={handleReabrir} disabled={finalizando} className="bg-red-500 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-red-600 transition shadow-md disabled:opacity-50"><Unlock size={18} /> Reabrir Edição</button></div>
-    </div>
-  );
-};
