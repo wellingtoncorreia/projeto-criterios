@@ -1,5 +1,6 @@
 // app/types/index.ts
-// Tipos de Entidades Base
+
+// --- Tipos de Entidades Base ---
 
 export type TipoUsuario = 'GESTOR' | 'PROFESSOR';
 export type TipoCriterio = 'CRITICO' | 'DESEJAVEL';
@@ -12,6 +13,13 @@ export interface Usuario {
     tipo: TipoUsuario;
 }
 
+export interface Professor {
+    id: number;
+    nome: string;
+    email: string;
+}
+
+// Unificado: Mantive a definição mais completa de Disciplina
 export interface Disciplina {
     id: number;
     nome: string;
@@ -21,17 +29,16 @@ export interface Disciplina {
 }
 
 export interface Criterio {
-    id: number; // Garante que o ID existe para o mapeamento de avaliação
+    id: number;
     descricao: string;
     tipo: TipoCriterio;
-    // Removendo a referência circular 'capacidade: Capacidade;'
+    // capacidade: Capacidade; // Removido para evitar referência circular
 }
 
 export interface Capacidade {
     id: number;
     descricao: string;
     tipo: TipoCapacidade;
-    // O backend precisa retornar critérios aninhados para o front-end
     criterios?: Criterio[]; 
 }
 
@@ -43,22 +50,28 @@ export interface Avaliacao {
     // ... outros campos
 }
 
-// DTOs
+// --- DTOs e Tipos Compostos ---
 
-// Renomeado de TurmaResponseDTO para Turma, para consistência, mas é o DTO de Resposta do Backend
+// Unificado: Esta é a definição oficial de Turma (removemos a duplicata lá de baixo)
 export interface Turma {
-  id: number;
-  nome: string;
-  anoSemestre: string;
-  termoAtual: number;
-  disciplinaId: number; // Referência ao Template
-  estruturaSnapshotId: number; // [NOVO] Referência à "foto" imutável
-  nomeDisciplina: string;
-  professores: Usuario[];
-  totalAlunos: number;
+    id: number;
+    nome: string;
+    anoSemestre: string;
+    termoAtual: number;
+    
+    // Tornamos opcionais (?) para evitar conflitos se o backend não mandar em alguns casos,
+    // mas mantivemos a tipagem forte.
+    disciplinaId?: number; 
+    estruturaSnapshotId?: number;
+    nomeDisciplina?: string;
+    
+    // Unificado: Aceita Usuario[] (mais completo) ou Professor[]
+    professores?: Usuario[] | Professor[]; 
+    
+    totalAlunos?: number;
 }
 
-// [CORREÇÃO] Exportando o tipo de resposta do DTO (o mesmo de Turma)
+// Alias para manter compatibilidade
 export type TurmaResponseDTO = Turma; 
 
 export interface Aluno {
@@ -69,22 +82,24 @@ export interface Aluno {
 }
 
 export interface ResultadoBoletim {
-  nomeAluno: string;
-  nomeDisciplina: string;
-  qtdCriticosAtendidos: number;
-  qtdDesejaveisAtendidos: number;
-  totalCriticosDisciplina: number;
-  totalDesejaveisDisciplina: number;
-  nivelAlcancado: number;
-  percentualConclusao: number;
+    nomeAluno: string;
+    nomeDisciplina: string;
+    qtdCriticosAtendidos: number;
+    qtdDesejaveisAtendidos: number;
+    totalCriticosDisciplina: number;
+    totalDesejaveisDisciplina: number;
+    nivelAlcancado: number;
+    percentualConclusao: number;
 }
 
-// Tipos auxiliares para ImportadorIterativo e comunicação entre componentes
+// --- Tipos Auxiliares para Importador e Componentes ---
+
 export interface CritItemDTO { 
-    id: string | number; // ID pode ser string (temp) ou number (final)
+    id: string | number; 
     descricao: string; 
     tipo: TipoCriterio; 
 }
+
 export interface CapItemDTO { 
     id: string | number; 
     descricao: string; 
@@ -92,76 +107,52 @@ export interface CapItemDTO {
     criterios: CritItemDTO[]; 
 }
 
-// Adicione/Atualize estas interfaces no seu arquivo existente
-
-export interface Professor {
-  id: number;
-  nome: string;
-  email: string;
-}
-
-export interface Turma {
-  id: number;
-  nome: string;
-  anoSemestre: string;
-  termoAtual: number;
-  disciplinaId?: number;
-  nomeDisciplina?: string; // Para exibição
-  estruturaSnapshotId?: number;
-  professores?: Professor[];
-}
-
-export interface Disciplina {
-  id: number;
-  nome: string;
-}
-
-// Interface que estava solta no Dashboard
+// Interface para o Dashboard
 export interface Boletim { 
-  nomeAluno: string; 
-  nivelAlcancado: number; 
+    nomeAluno: string; 
+    nivelAlcancado: number; 
 }
 
-// Interface que estava solta em Turmas
+// Interface para seleção de Turmas
 export interface DisciplinaOpcao extends Disciplina {
-  snapshotId: number | null;
-  status: 'PRONTO' | 'SEM_SNAPSHOT' | 'CARREGANDO';
+    snapshotId: number | null;
+    status: 'PRONTO' | 'SEM_SNAPSHOT' | 'CARREGANDO';
 }
 
-// Interfaces para Gráficos do Dashboard (opcional, mas bom para tipar o hook)
+// --- Interfaces para Gráficos do Dashboard ---
+
 export interface DashboardKPIs {
-  mediaGeral: string;
-  aprovados: number;
-  retidos: number;
-  totalAlunos: number;
+    mediaGeral: string;
+    aprovados: number;
+    retidos: number;
+    totalAlunos: number;
 }
 
 export interface ChartDataFaixa {
-  name: string;
-  alunos: number;
+    name: string;
+    alunos: number;
 }
 
+// Corrigido para evitar erro no Recharts (index signature adicionada)
 export interface ChartDataStatus {
-  name: string;
-  value: number;
-  [key: string]: any;
+    name: string;
+    value: number;
+    [key: string]: any;
 }
 
-// --- Mantenha os tipos existentes (Usuario, Disciplina, etc) e ADICIONE/ATUALIZE estes: ---
+// --- Tipos para Importação/Edição ---
 
-// Tipos para Importação/Edição
 export interface CapacidadeEdicaoDTO {
-  id: string;
-  descricao: string;
-  tipo: 'TECNICA' | 'SOCIOEMOCIONAL';
-  criterios: {
     id: string;
     descricao: string;
-    tipo: 'CRITICO' | 'DESEJAVEL';
-  }[];
+    tipo: 'TECNICA' | 'SOCIOEMOCIONAL';
+    criterios: {
+        id: string;
+        descricao: string;
+        tipo: 'CRITICO' | 'DESEJAVEL';
+    }[];
 }
 
-// Auxiliar para criação de critérios
 export interface NovoCriterioDTO {
     id: string;
     descricao: string;
@@ -169,37 +160,39 @@ export interface NovoCriterioDTO {
     capacidadeId: number;
 }
 
-// Tipos para Avaliação
+// --- Tipos para Avaliação ---
+
 export interface AvaliacaoEstado {
-  atendeu: boolean | null;
-  obs: string;
-  finalizada: boolean | undefined;
+    atendeu: boolean | null;
+    obs: string;
+    finalizada: boolean | undefined;
 }
 
 export interface DisciplinaDisponivel extends Disciplina {
-  avaliacaoId: number; 
-  isPrincipal: boolean;
+    avaliacaoId: number; 
+    isPrincipal: boolean;
 }
 
-// Relatórios
+// --- Relatórios ---
+
 export interface BoletimRelatorio {
-  nomeAluno: string;
-  qtdCriticosAtendidos: number;
-  qtdDesejaveisAtendidos: number;
-  totalCriticosDisciplina: number;
-  totalDesejaveisDisciplina: number;
-  nivelAlcancado: number;
-  percentualConclusao: number;
+    nomeAluno: string;
+    qtdCriticosAtendidos: number;
+    qtdDesejaveisAtendidos: number;
+    totalCriticosDisciplina: number;
+    totalDesejaveisDisciplina: number;
+    nivelAlcancado: number;
+    percentualConclusao: number;
 }
 
 export interface NivelRegra {
-  id: number;
-  nivel: number;
-  minCriticos: number;
-  minDesejaveis: number;
+    id: number;
+    nivel: number;
+    minCriticos: number;
+    minDesejaveis: number;
 }
 
 export interface DisciplinaComSnapshot extends Disciplina {
-  snapshotId: number | null;
-  isPrincipal: boolean;
+    snapshotId: number | null;
+    isPrincipal: boolean;
 }
