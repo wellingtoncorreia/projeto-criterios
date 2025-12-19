@@ -1,108 +1,20 @@
 'use client';
 
-import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Save, Users, UserCheck } from "lucide-react";
 import Link from 'next/link';
-import api from '@/app/services/api';
-import Swal from "sweetalert2";
-import { Usuario } from '@/app/types'; // Importando o tipo Usuario
-
-// Interface adaptada da TurmaResponseDTO (do backend)
-interface TurmaData {
-  id: number;
-  nome: string;
-  anoSemestre: string;
-  termoAtual: number;
-  professores: Usuario[];
-  totalAlunos: number;
-}
-
-interface FormDataState {
-  nome: string;
-  anoSemestre: string;
-  termoAtual: number;
-}
+import { ArrowLeft, Save, Users, UserCheck, Lock } from "lucide-react";
+import { useEditarTurma } from '@/app/hooks/useEditarTurma';
 
 export default function EditarTurmaPage() {
-  const params = useParams();
-  const id = params?.id as string;
-
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [professores, setProfessores] = useState<Usuario[]>([]);
-  
-  // Estados do Formulário
-  const [formData, setFormData] = useState<FormDataState>({ nome: "", anoSemestre: "", termoAtual: 1 });
-  const [prof1, setProf1] = useState<string>(""); // ID do prof 1
-  const [prof2, setProf2] = useState<string>(""); // ID do prof 2
-
-  useEffect(() => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
-    
-    Promise.all([
-        api.get<TurmaData>(`/turmas/${id}`),       // Dados da Turma
-        api.get<Usuario[]>('/admin/professores')   // Lista de Professores
-    ]).then(([resTurma, resProfs]) => {
-        const t = resTurma.data;
-        setFormData({ nome: t.nome, anoSemestre: t.anoSemestre, termoAtual: t.termoAtual });
-        setProfessores(resProfs.data);
-
-        // Preenche os selects com os professores atuais (usando ID como string)
-        if (t.professores && t.professores.length > 0) setProf1(t.professores[0].id.toString());
-        if (t.professores && t.professores.length > 1) setProf2(t.professores[1].id.toString());
-
-        setLoading(false);
-    }).catch(err => {
-        console.error(err);
-        Swal.fire('Erro', 'Falha ao carregar dados da turma.', 'error');
-        setLoading(false);
-    });
-  }, [id]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const profsSelecionados = [prof1, prof2].filter(p => p !== "");
-    
-    if (profsSelecionados.length < 1) { // A regra de negócio aceita mínimo 1 (no service está mínimo 1)
-        return Swal.fire('Atenção', 'Selecione no mínimo 1 professor para a turma.', 'warning');
-    }
-    if (profsSelecionados.length > 2) {
-        return Swal.fire('Erro', 'A turma pode ter no máximo 2 professores.', 'error');
-    }
-    if (prof1 === prof2 && profsSelecionados.length === 2) {
-      return Swal.fire('Erro', 'O professor responsável e o co-responsável não podem ser a mesma pessoa.', 'error');
-    }
-    
-    setLoading(true);
-
-    try {
-        // O backend espera 'professoresIds' como um array de IDs
-        await api.put(`/turmas/${id}`, {
-            ...formData,
-            professoresIds: profsSelecionados.map(p => Number(p))
-        });
-        
-        await Swal.fire({
-            icon: 'success',
-            title: 'Turma Atualizada!',
-            text: 'Os dados e professores foram atualizados com sucesso.',
-            showConfirmButton: false,
-            timer: 1500
-        });
-
-        router.push('/gestao/turmas');
-    } catch (err: any) {
-        const msg = err.response?.data || 'Erro ao salvar.';
-        Swal.fire('Erro', typeof msg === 'string' ? msg : 'Falha na comunicação com o servidor.', 'error');
-    } finally {
-        setLoading(false);
-    }
-  };
+  const {
+    id,
+    loading,
+    professores,
+    formData, setFormData,
+    prof1, setProf1,
+    prof2, setProf2,
+    handleSubmit,
+    isGestor
+  } = useEditarTurma();
 
   if (!id) return <div className="p-8 text-center text-gray-400">ID da turma não encontrado.</div>;
   if (loading) return <div className="p-8 text-center text-gray-500">Carregando dados da turma...</div>;
@@ -168,10 +80,17 @@ export default function EditarTurmaPage() {
                 </div>
 
                 {/* Seleção de Professores */}
-                <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
-                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                        <UserCheck size={18} /> Atribuição de Professores
-                    </h3>
+                <div className={`p-4 rounded-md border ${isGestor ? 'bg-gray-50 border-gray-200' : 'bg-gray-100 border-gray-300'}`}>
+                    <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            <UserCheck size={18} /> Atribuição de Professores
+                        </h3>
+                        {!isGestor && (
+                            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded flex items-center gap-1 font-semibold">
+                                <Lock size={12} /> Restrito a Gestores
+                            </span>
+                        )}
+                    </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -179,7 +98,12 @@ export default function EditarTurmaPage() {
                             <select 
                                 value={prof1}
                                 onChange={e => setProf1(e.target.value)}
-                                className="w-full p-2.5 border rounded bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                disabled={!isGestor}
+                                className={`w-full p-2.5 border rounded outline-none transition
+                                    ${isGestor 
+                                        ? 'bg-white focus:ring-2 focus:ring-blue-500' 
+                                        : 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-300'
+                                    }`}
                             >
                                 <option value="">Nenhum</option>
                                 {professores.map(p => (
@@ -193,7 +117,12 @@ export default function EditarTurmaPage() {
                             <select 
                                 value={prof2}
                                 onChange={e => setProf2(e.target.value)}
-                                className="w-full p-2.5 border rounded bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                disabled={!isGestor}
+                                className={`w-full p-2.5 border rounded outline-none transition
+                                    ${isGestor 
+                                        ? 'bg-white focus:ring-2 focus:ring-blue-500' 
+                                        : 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-300'
+                                    }`}
                             >
                                 <option value="">Nenhum</option>
                                 {professores.map(p => (

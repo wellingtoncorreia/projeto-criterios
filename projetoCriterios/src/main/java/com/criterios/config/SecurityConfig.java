@@ -41,14 +41,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // 2. Rotas de GESTOR (Criação/Edição/Deleção de Disciplinas e Rotas de Admin)
-                        .requestMatchers("/api/admin/**").hasRole("GESTOR")
-                        .requestMatchers(HttpMethod.POST, "/api/disciplinas").hasRole("GESTOR")
-                        .requestMatchers(HttpMethod.PUT, "/api/disciplinas/**").hasRole("GESTOR")
+                       
+                        .requestMatchers(HttpMethod.POST, "/api/disciplinas").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/disciplinas/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/disciplinas/**").hasRole("GESTOR")
                         
                         // 3. Rotas de Autenticado (GET e Operações Gerais)
                         .requestMatchers(HttpMethod.GET, "/api/disciplinas/**").authenticated() 
-                        
+                        .requestMatchers("/api/admin/**").authenticated() 
                         // Rotas de Gestão Geral (CRUD de Turmas, Alunos, Avaliações, Arquivos, GestaoController)
                         .requestMatchers("/api/turmas/**").authenticated()
                         .requestMatchers("/api/alunos/**").authenticated()

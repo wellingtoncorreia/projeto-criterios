@@ -1,70 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import api from '@/app/services/api'; 
-import Swal from 'sweetalert2';
+import { useLogin } from '@/app/hooks/useLogin';
 import { GraduationCap, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
-  const router = useRouter();
-  
-  // Estados
-  const [isRegister, setIsRegister] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [nome, setNome] = useState(''); 
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const endpoint = isRegister ? '/auth/register' : '/auth/login';
-      
-      const payload = { 
-        email, 
-        senha, 
-        nome: isRegister ? nome : undefined 
-      };
-
-      const res = await api.post(endpoint, payload);
-      
-      if (isRegister) {
-        Swal.fire({
-          title: 'Sucesso!',
-          text: 'Cadastro realizado com sucesso. Faça login agora.',
-          icon: 'success',
-          confirmButtonColor: '#4338ca' 
-        });
-        setIsRegister(false);
-        setLoading(false);
-      } else {
-        // LOGIN COM SUCESSO
-        
-        // 1. Salva o Token e dados do usuário na Sessão (fecha navegador = desloga)
-        sessionStorage.setItem('token', res.data.token);
-        sessionStorage.setItem('user', res.data.nome || 'Professor'); 
-        sessionStorage.setItem('role', res.data.tipo);
-
-        // 2. IMPORTANTE: Reseta o timer de inatividade para "AGORA"
-        // Usamos localStorage para o timer para sincronizar abas, se necessário
-        localStorage.setItem('lastActiveTime', Date.now().toString());
-        
-        router.push('/dashboard'); 
-      }
-
-    } catch (err: any) {
-      setLoading(false);
-      Swal.fire({
-        title: 'Erro de Acesso',
-        text: err.response?.data?.message || 'Credenciais inválidas ou erro no servidor.',
-        icon: 'error',
-        confirmButtonColor: '#ef4444'
-      });
-    }
-  }
+  const { form, state, actions } = useLogin();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -75,63 +15,31 @@ export default function LoginPage() {
             <GraduationCap size={40} className="text-indigo-700" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800">
-            {isRegister ? 'Criar Conta' : 'Acesso Docente'}
+            {state.isRegister ? 'Criar Conta' : 'Acesso Docente'}
           </h1>
           <p className="text-sm text-gray-500 mt-1">Sistema de Gestão SENAI</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          
-          {isRegister && (
+        <form onSubmit={actions.handleLogin} className="space-y-4">
+          {state.isRegister && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
-              <input 
-                className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" 
-                placeholder="Ex: Carlos Silva" 
-                value={nome} 
-                onChange={e => setNome(e.target.value)}
-                required={isRegister}
-              />
+              <input className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="Ex: Carlos Silva" value={form.nome} onChange={e => form.setNome(e.target.value)} required={state.isRegister} />
             </div>
           )}
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email Institucional</label>
-            <input 
-              className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" 
-              placeholder="professor@sp.senai.br" 
-              type="email"
-              value={email} 
-              onChange={e => setEmail(e.target.value)}
-              required 
-            />
+            <input className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="professor@sp.senai.br" type="email" value={form.email} onChange={e => form.setEmail(e.target.value)} required />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-            <input 
-              className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" 
-              type="password" 
-              placeholder="••••••••" 
-              value={senha} 
-              onChange={e => setSenha(e.target.value)}
-              required 
-            />
+            <input className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none transition" type="password" placeholder="••••••••" value={form.senha} onChange={e => form.setSenha(e.target.value)} required />
           </div>
 
-          <button 
-            type="submit"
-            disabled={loading}
-            className="w-full bg-indigo-700 text-white p-2.5 rounded-md font-medium hover:bg-indigo-800 transition duration-200 flex items-center justify-center gap-2 mt-6 disabled:opacity-70"
-          >
-            {loading ? (
-              <> <Loader2 className="animate-spin" size={20} /> Processando... </>
-            ) : (
-              isRegister ? 'Cadastrar Professor' : 'Entrar no Sistema'
-            )}
+          <button type="submit" disabled={state.loading} className="w-full bg-indigo-700 text-white p-2.5 rounded-md font-medium hover:bg-indigo-800 transition duration-200 flex items-center justify-center gap-2 mt-6 disabled:opacity-70">
+            {state.loading ? <><Loader2 className="animate-spin" size={20} /> Processando...</> : (state.isRegister ? 'Cadastrar Professor' : 'Entrar no Sistema')}
           </button>
         </form>
-
       </div>
     </div>
   );

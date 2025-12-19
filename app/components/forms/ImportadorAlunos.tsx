@@ -1,99 +1,33 @@
 'use client';
+import { Upload, X, FileText, Loader2 } from 'lucide-react';
+import { useImportadorAlunos } from '@/app/hooks/useImportadorAlunos';
 
-import { useState } from 'react';
-import { UploadCloud, X, Loader2 } from 'lucide-react';
-import api from '@/app/services/api';
-import Swal from 'sweetalert2';
-
-// [CORRIGIDO] Interface de Props definida para resolver o erro de tipagem no page.tsx
-interface Props {
-    turmaId: number;
-    onClose: () => void;
-    onSuccess: () => Promise<void>;
-}
+interface Props { turmaId: number; onClose: () => void; onSuccess: () => void; }
 
 export default function ImportadorAlunos({ turmaId, onClose, onSuccess }: Props) {
-    const [file, setFile] = useState<File | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+  const { file, loading, fileInputRef, handleFileChange, handleUpload } = useImportadorAlunos(turmaId, onSuccess, onClose);
 
-    async function handleUpload() {
-        if (!file) return;
-        setLoading(true);
-        setMessage(null);
-
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('turmaId', turmaId.toString());
-
-        try {
-            const res = await api.post('/arquivos/importar-alunos', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            setMessage({ text: res.data, type: 'success' });
-            setFile(null);
-            await onSuccess(); // Chamada para atualizar a lista de alunos
-        } catch (error: any) {
-            console.error(error);
-            const errorData = error.response?.data;
-            let msg = 'Erro ao importar. Verifique se o arquivo PDF é válido e contém a matrícula e nome.';
-            if (typeof errorData === 'string') msg = errorData;
-            else if (errorData?.message) msg = errorData.message;
-            setMessage({ text: msg, type: 'error' });
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95">
-                <div className="flex justify-between items-start">
-                    <h3 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <UploadCloud size={24} className="text-blue-600"/> Importar Alunos
-                    </h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
-                </div>
-                
-                <div className="border-t border-gray-100 pt-4 mt-4">
-                    <p className="text-sm text-gray-500 mb-6">
-                        Suba um arquivo PDF de listagem de alunos (Ex: Lista de chamada). O sistema tentará extrair a matrícula e o nome.
-                    </p>
-
-                    <div className="flex flex-col items-center gap-4">
-                        <label className="cursor-pointer w-full">
-                        <div className={`px-6 py-3 rounded-md border flex items-center justify-center gap-2 transition ${file ? 'bg-green-50 border-green-300 text-green-700' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}`}>
-                            <UploadCloud size={20} />
-                            <span className="font-medium truncate">{file ? file.name : 'Selecionar Arquivo PDF'}</span>
-                            <input 
-                                type="file" 
-                                accept="application/pdf" 
-                                className="hidden" 
-                                onChange={(e) => setFile(e.target.files?.[0] || null)} 
-                                disabled={loading}
-                            />
-                        </div>
-                        </label>
-                        
-                        {file && (
-                            <button 
-                            onClick={handleUpload} 
-                            disabled={loading}
-                            className="w-full bg-blue-600 text-white px-8 py-2 rounded-md font-bold hover:bg-blue-700 disabled:opacity-50 transition shadow-sm"
-                            >
-                            {loading ? <Loader2 size={20} className="animate-spin mx-auto"/> : 'Iniciar Importação'}
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {message && (
-                    <div className={`mt-4 p-3 rounded text-sm inline-flex items-center gap-2 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {message.text}
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
+        <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
+          <h3 className="font-bold flex items-center gap-2"><Upload size={20} /> Importar Alunos</h3>
+          <button onClick={onClose} className="hover:bg-indigo-700 p-1 rounded-full"><X size={20} /></button>
         </div>
-    );
+        <div className="p-6">
+          <div className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${file ? 'border-indigo-300 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'}`} onClick={() => fileInputRef.current?.click()}>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".pdf,.xls,.xlsx" className="hidden" />
+            {file ? (
+              <div className="text-center"><FileText size={48} className="text-indigo-600 mx-auto mb-2" /><p className="font-medium text-gray-800">{file.name}</p><p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p></div>
+            ) : (
+              <div className="text-center"><Upload size={48} className="text-gray-300 mx-auto mb-2" /><p className="text-gray-600 font-medium">Clique para selecionar</p><p className="text-xs text-gray-400 mt-1">PDF ou Excel</p></div>
+            )}
+          </div>
+          <button onClick={handleUpload} disabled={!file || loading} className="w-full mt-6 bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-md">
+            {loading ? <><Loader2 className="animate-spin" /> Processando...</> : 'Enviar Arquivo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

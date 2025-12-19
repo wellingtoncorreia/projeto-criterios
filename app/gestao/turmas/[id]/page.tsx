@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation'; // Adicionado useRouter
+import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, UserPlus, Users, BarChart, Send, Download, Trash2, Settings,
-  X, Loader2, CheckCircle2, AlertCircle, GraduationCap // Novos ícones
+  X, Loader2, CheckCircle2, AlertCircle, GraduationCap, Zap // Adicionei 'Zap'
 } from 'lucide-react';
 import Link from 'next/link';
 import api from '@/app/services/api';
 import Swal from 'sweetalert2';
-import { Turma, Aluno, Disciplina } from '@/app/types'; // Adicionado Disciplina
+import { Turma, Aluno, Disciplina } from '@/app/types';
 import ImportadorAlunos from '@/app/components/forms/ImportadorAlunos'; 
 
 interface PageProps {
@@ -24,7 +24,7 @@ interface DisciplinaOpcao extends Disciplina {
 
 export default function DetalhesTurmaPage({ params }: PageProps) {
   const { id } = use(params);
-  const router = useRouter(); // Hook de navegação
+  const router = useRouter();
   
   const [turma, setTurma] = useState<Turma | null>(null);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
@@ -54,7 +54,7 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
     }
   }
 
-  // --- Lógica do Modal de Avaliação (A mesma da listagem) ---
+  // --- Lógica do Modal de Avaliação ---
   const abrirModalAvaliacao = async () => {
     if (!turma) return;
     
@@ -63,19 +63,14 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
     setDisciplinasModal([]);
 
     try {
-        // 1. Busca todas as disciplinas da turma
         const resDiscs = await api.get<Disciplina[]>(`/turmas/${turma.id}/disciplinas`);
         const disciplinasBasicas = resDiscs.data;
 
-        // 2. Verifica Snapshot em tempo real
         const disciplinasVerificadas = await Promise.all(disciplinasBasicas.map(async (d) => {
             let snapId: number | null = null;
-
-            // Tenta usar o cache da Turma se for a principal
             if (d.id === turma.disciplinaId && turma.estruturaSnapshotId) {
                 snapId = turma.estruturaSnapshotId;
             } else {
-                // Senão, consulta API
                 try {
                     const resSnap = await api.get<number>(`/disciplinas/${d.id}/snapshot-status`);
                     snapId = resSnap.data;
@@ -83,7 +78,6 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
                     snapId = null;
                 }
             }
-
             return {
                 ...d,
                 snapshotId: snapId,
@@ -102,13 +96,39 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
     }
   };
 
+  // --- NOVA FUNÇÃO LOCAL: CRIAR SNAPSHOT ---
+  const handleCriarSnapshot = async (discId: number) => {
+    if (!turma) return;
+    setLoadingModal(true);
+    try {
+        const res = await api.post(`/turmas/${turma.id}/snapshot/${discId}`);
+        const novoSnapshotId = res.data?.estruturaSnapshotId;
+
+        if (novoSnapshotId) {
+            setDisciplinasModal(prev => prev.map(d => 
+                d.id === discId ? { ...d, snapshotId: novoSnapshotId, status: 'PRONTO' } : d
+            ));
+            Swal.fire({
+                icon: 'success',
+                title: 'Snapshot Criado!',
+                text: 'Avaliação iniciada com sucesso.',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
+    } catch (err) {
+        console.error(err);
+        Swal.fire('Erro', 'Erro ao criar Snapshot.', 'error');
+    } finally {
+        setLoadingModal(false);
+    }
+  };
+
   const handleNavegarAvaliacao = (snapshotId: number, discId: number) => {
       setIsModalOpen(false);
-      // Redireciona com snapshotId E discId
       router.push(`/gestao/turmas/${id}/avaliacao?estruturaId=${snapshotId}&discId=${discId}`);
   };
 
-  // Exclusão de aluno
   async function handleDeleteAluno(alunoId: number, nomeAluno: string) {
     const result = await Swal.fire({
       title: 'Excluir Aluno?',
@@ -138,57 +158,36 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
   if (loading) return <div className="p-8 text-center text-gray-500 flex flex-col items-center"><Loader2 className="animate-spin mb-2"/> Carregando dados da turma...</div>;
   if (!turma) return <div className="p-8 text-center text-red-500">Turma não encontrada.</div>;
 
-  // Verifica se existe Snapshot principal para exibir o botão de relatório (mantido lógica simples para relatório)
   const isStructureReady = turma.estruturaSnapshotId !== undefined && turma.estruturaSnapshotId !== null;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-       
-       {/* Cabeçalho de Navegação */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-         <Link 
-          href="/gestao/turmas" 
-          className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
-        >
+         <Link href="/gestao/turmas" className="text-gray-500 hover:text-gray-700 flex items-center gap-2">
           <ArrowLeft size={20} /> Voltar para Turmas
         </Link>
         
         <div className="flex flex-wrap gap-3">
-        {/* Botão de Avaliação - AGORA ABRE O MODAL */}
-            <button 
-                onClick={abrirModalAvaliacao}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-            >
+            <button onClick={abrirModalAvaliacao} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 text-sm font-medium transition shadow-sm">
                 <Send size={18} /> Avaliar Turma
             </button>
 
-            {/* Botão de Relatório */}
             {isStructureReady && (
-                <Link 
-                    href={`/gestao/turmas/${id}/relatorio?estruturaId=${turma.estruturaSnapshotId}&origem=detalhes`}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-                >
+                <Link href={`/gestao/turmas/${id}/relatorio?estruturaId=${turma.estruturaSnapshotId}&origem=detalhes`} className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2 text-sm font-medium transition shadow-sm">
                     <BarChart size={18} /> Relatório/Boletim
                 </Link>
             )}
 
-            {/* Botão Importar Alunos */}
-            <button 
-                onClick={() => setShowImportador(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition shadow-sm"
-            >
+            <button onClick={() => setShowImportador(true)} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium transition shadow-sm">
                 <Download size={18} /> Importar Alunos
             </button>
         </div>
        </div>
 
-      {/* Info da Turma */}
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">{turma.nome}</h1>
         <div className="flex flex-col md:flex-row md:items-center gap-4 text-gray-600">
-            <span className="font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded border border-blue-100">
-                {turma.nomeDisciplina || "Sem Disciplina Vinculada"}
-            </span>
+            <span className="font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded border border-blue-100">{turma.nomeDisciplina || "Sem Disciplina Vinculada"}</span>
             <span>|</span>
             <span>{turma.anoSemestre}</span>
             <span>|</span>
@@ -205,7 +204,6 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
         </div>
       </div>
       
-      {/* Lista de Alunos */}
       <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-gray-700">Alunos Matriculados</h2>
       </div>
@@ -228,15 +226,9 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
                   <tbody className="bg-white divide-y divide-gray-200">
                       {alunos.map((aluno, index) => (
                           <tr key={aluno.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                  {aluno.nome}
-                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{aluno.nome}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button
-                                    onClick={() => handleDeleteAluno(aluno.id, aluno.nome)}
-                                    className="text-red-500 hover:text-red-700 transition flex items-center gap-1 justify-end ml-auto"
-                                    title="Excluir Aluno"
-                                >
+                                <button onClick={() => handleDeleteAluno(aluno.id, aluno.nome)} className="text-red-500 hover:text-red-700 transition flex items-center gap-1 justify-end ml-auto" title="Excluir Aluno">
                                     <Trash2 size={16} /> <span className="hidden sm:inline">Excluir</span>
                                 </button>
                               </td>
@@ -247,16 +239,11 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
           </div>
       )}
 
-      {/* Modal Importador */}
       {showImportador && (
-        <ImportadorAlunos 
-            turmaId={Number(id)}
-            onClose={() => setShowImportador(false)}
-            onSuccess={carregarDados} 
-        />
+        <ImportadorAlunos turmaId={Number(id)} onClose={() => setShowImportador(false)} onSuccess={carregarDados} />
       )}
 
-      {/* --- MODAL DE SELEÇÃO DE DISCIPLINA (NOVO) --- */}
+      {/* --- MODAL DE SELEÇÃO DE DISCIPLINA --- */}
       {isModalOpen && turma && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -266,9 +253,7 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
                         <h3 className="text-lg font-bold text-gray-800">Avaliar Turma</h3>
                         <p className="text-sm text-gray-500">{turma.nome}</p>
                     </div>
-                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition">
-                        <X size={20} />
-                    </button>
+                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition"><X size={20} /></button>
                 </div>
 
                 <div className="p-6">
@@ -293,9 +278,7 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
                                             <GraduationCap size={20} />
                                         </div>
                                         <div>
-                                            <h4 className={`font-semibold ${disc.snapshotId ? 'text-gray-800' : 'text-gray-400'}`}>
-                                                {disc.nome}
-                                            </h4>
+                                            <h4 className={`font-semibold ${disc.snapshotId ? 'text-gray-800' : 'text-gray-400'}`}>{disc.nome}</h4>
                                             <span className="text-xs text-gray-500">
                                                 {disc.snapshotId 
                                                     ? <span className="text-green-600 flex items-center gap-1"><CheckCircle2 size={10}/> Avaliação Ativa</span> 
@@ -304,16 +287,29 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
                                         </div>
                                     </div>
 
-                                    <button
-                                        onClick={() => disc.snapshotId && handleNavegarAvaliacao(disc.snapshotId, disc.id)}
-                                        disabled={!disc.snapshotId}
-                                        className={`px-4 py-2 rounded text-sm font-medium transition
-                                            ${disc.snapshotId 
-                                                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
-                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-                                    >
-                                        Avaliar
-                                    </button>
+                                    {/* AQUI A LÓGICA LOCAL DO BOTÃO CRIAR */}
+                                    <div className="flex items-center gap-2">
+                                        {!disc.snapshotId && (
+                                            <button 
+                                                onClick={() => handleCriarSnapshot(disc.id)}
+                                                className="px-3 py-2 rounded text-sm font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition flex items-center gap-1 shadow-sm"
+                                                title="Criar Snapshot"
+                                            >
+                                                <Zap size={14} /> Criar
+                                            </button>
+                                        )}
+
+                                        <button
+                                            onClick={() => disc.snapshotId && handleNavegarAvaliacao(disc.snapshotId, disc.id)}
+                                            disabled={!disc.snapshotId}
+                                            className={`px-4 py-2 rounded text-sm font-medium transition
+                                                ${disc.snapshotId 
+                                                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
+                                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                                        >
+                                            Avaliar
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -321,9 +317,7 @@ export default function DetalhesTurmaPage({ params }: PageProps) {
                 </div>
 
                 <div className="bg-gray-50 px-6 py-3 border-t text-center">
-                    <button onClick={() => setIsModalOpen(false)} className="text-sm text-gray-500 hover:text-gray-800 underline">
-                        Cancelar
-                    </button>
+                    <button onClick={() => setIsModalOpen(false)} className="text-sm text-gray-500 hover:text-gray-800 underline">Cancelar</button>
                 </div>
             </div>
         </div>

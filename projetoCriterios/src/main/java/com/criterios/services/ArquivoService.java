@@ -287,7 +287,7 @@ public class ArquivoService {
             if (!colCriterio.isEmpty()) {
                 CritItemDTO crit = new CritItemDTO();
                 crit.setDescricao(colCriterio);
-                crit.setTipo(TipoCriterio.CRITICO); // Default para CRITICO
+                crit.setTipo(TipoCriterio.DESEJAVEL); // Default para CRITICO
                 nova.getCriterios().add(crit);
             }
         }
@@ -295,7 +295,7 @@ public class ArquivoService {
         else if (colCapacidade.isEmpty() && !colCriterio.isEmpty() && ultimaCapacidade != null) {
             CritItemDTO crit = new CritItemDTO();
             crit.setDescricao(colCriterio);
-            crit.setTipo(TipoCriterio.CRITICO); // Default para CRITICO
+            crit.setTipo(TipoCriterio.DESEJAVEL); // Default para CRITICO
             ultimaCapacidade.getCriterios().add(crit);
         }
     }
